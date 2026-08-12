@@ -1,0 +1,171 @@
+﻿<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>同事 Lunch 記帳 App</title>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
+    <style>
+        :root { --primary-color: #2563eb; --bg-color: #f8fafc; --card-bg: #ffffff; --text-color: #1e293b; --border-color: #e2e8f0; --danger-color: #ef4444; --success-color: #10b981; }
+        body { font-family: sans-serif; background-color: var(--bg-color); color: var(--text-color); margin: 0; padding: 20px; }
+        .container { max-width: 800px; margin: 0 auto; }
+        h1 { text-align: center; color: var(--primary-color); }
+        .card { background: var(--card-bg); border-radius: 12px; padding: 20px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        input, select, button { width: 100%; padding: 10px; border: 1px solid var(--border-color); border-radius: 6px; box-sizing: border-box; font-size: 1rem; margin-top: 5px; }
+        button { background-color: var(--primary-color); color: white; border: none; font-weight: bold; cursor: pointer; margin-top: 8px; }
+        button.danger { background-color: var(--danger-color); }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { padding: 10px; text-align: left; border-bottom: 1px solid var(--border-color); }
+        th { background-color: #f1f5f9; }
+        .tag { display: inline-block; background: #e2e8f0; padding: 4px 8px; border-radius: 4px; font-size: 0.85rem; margin: 2px; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>🍱 同事 Lunch 記帳 App</h1>
+    <div id="syncStatus" style="text-align:center; font-weight:bold; color:var(--success-color); margin-bottom:15px;">🟢 準備連線...</div>
+
+    <div class="card">
+        <h2>👥 同事名單</h2>
+        <input type="text" id="memberNameInput" placeholder="輸入同事姓名">
+        <button onclick="addMember()">新增同事</button>
+        <div id="memberTags" style="margin-top: 10px;"></div>
+    </div>
+
+    <div class="card">
+        <h2>💸 記一筆洗費</h2>
+        <label>項目名稱</label>
+        <input type="text" id="expenseTitle" placeholder="例如: 譚仔午餐">
+        <label>金額 (HK$)</label>
+        <input type="number" id="expenseAmount" placeholder="0.00">
+        <label>邊個畀錢？</label>
+        <select id="expensePayer"></select>
+        <label>參與分擔的人</label>
+        <div id="expenseParticipants" style="display:flex; flex-wrap:wrap; gap:10px; margin-top:5px;"></div>
+        <button onclick="addExpense()">新增紀錄</button>
+    </div>
+
+    <div class="card">
+        <h2>📋 歷史明細</h2>
+        <table>
+            <thead><tr><th>項目</th><th>金額</th><th>付款人</th><th>參與者</th><th>操作</th></tr></thead>
+            <tbody id="expenseTableBody"><tr><td colspan="5" style="text-align:center; color:#64748b;">載入中...</td></tr></tbody>
+        </table>
+    </div>
+
+    <div class="card">
+        <h2>⚖️ 結算建議</h2>
+        <div id="settlementResult"><p style="color:#64748b; text-align:center;">請先新增同事及消費</p></div>
+        <button class="danger" onclick="resetAllData()" style="margin-top:20px;">清空所有資料</button>
+    </div>
+</div>
+
+<script>
+    // 已經幫你入好 lunch-app-81237 嘅資料
+    const firebaseConfig = {
+        databaseURL: "https://lunch-app-81237-default-rtdb.firebaseio.com",
+        projectId: "lunch-app-81237"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
+    let members = [];
+    let expenses = [];
+
+    db.ref('lunchData').on('value', (snapshot) => {
+        const data = snapshot.val() || {};
+        members = data.members || [];
+        expenses = data.expenses ? Object.keys(data.expenses).map(k => ({ id: k, ...data.expenses[k] })) : [];
+        render();
+        document.getElementById('syncStatus').innerText = '🟢 雲端同步連線成功！';
+    });
+
+    function addMember() {
+        const name = document.getElementById('memberNameInput').value.trim();
+        if (!name) return alert('請輸入姓名');
+        if (members.includes(name)) return alert('同事已存在');
+        members.push(name);
+        document.getElementById('memberNameInput').value = '';
+        db.ref('lunchData/members').set(members);
+    }
+
+    function removeMember(name) {
+        members = members.filter(m => m !== name);
+        db.ref('lunchData/members').set(members);
+    }
+
+    function addExpense() {
+        const title = document.getElementById('expenseTitle').value.trim();
+        const amount = parseFloat(document.getElementById('expenseAmount').value);
+        const payer = document.getElementById('expensePayer').value;
+        const participants = Array.from(document.querySelectorAll('input[name="participant"]:checked')).map(cb => cb.value);
+
+        if (!title || isNaN(amount) || amount <= 0 || !payer || participants.length === 0) {
+            return alert('請完整填寫資料及選擇參與者');
+        }
+
+        db.ref('lunchData/expenses').push({ title, amount, payer, participants });
+        document.getElementById('expenseTitle').value = '';
+        document.getElementById('expenseAmount').value = '';
+    }
+
+    function deleteExpense(id) {
+        db.ref(`lunchData/expenses/${id}`).remove();
+    }
+
+    function resetAllData() {
+        if (confirm('確定清空所有資料？')) db.ref('lunchData').remove();
+    }
+
+    function render() {
+        document.getElementById('memberTags').innerHTML = members.map(m => `<span class="tag">${m} <span onclick="removeMember('${m}')" style="cursor:pointer;color:red;font-weight:bold;">&times;</span></span>`).join('') || '未有同事';
+        document.getElementById('expensePayer').innerHTML = members.map(m => `<option value="${m}">${m}</option>`).join('') || '<option>請先加同事</option>';
+        document.getElementById('expenseParticipants').innerHTML = members.map(m => `<label><input type="checkbox" name="participant" value="${m}" checked> ${m}</label>`).join('') || '請先加同事';
+        
+        const tbody = document.getElementById('expenseTableBody');
+        tbody.innerHTML = expenses.length ? expenses.map(e => `<tr><td>${e.title}</td><td>HK$ ${Number(e.amount).toFixed(2)}</td><td>${e.payer}</td><td>${e.participants ? e.participants.join(', ') : ''}</td><td><button onclick="deleteExpense('${e.id}')" style="padding:4px 8px;background:var(--danger-color);width:auto;">刪除</button></td></tr>`).join('') : '<tr><td colspan="5" style="text-align:center;color:#64748b;">暫無紀錄</td></tr>';
+
+        const container = document.getElementById('settlementResult');
+        if (!members.length || !expenses.length) {
+            container.innerHTML = '<p style="color:#64748b; text-align:center;">尚需更多資料</p>';
+            return;
+        }
+
+        let balances = {};
+        members.forEach(m => balances[m] = 0);
+        expenses.forEach(e => {
+            if (!e.participants) return;
+            balances[e.payer] += Number(e.amount);
+            const share = Number(e.amount) / e.participants.length;
+            e.participants.forEach(p => { if (balances[p] !== undefined) balances[p] -= share; });
+        });
+
+        let debtors = [], creditors = [];
+        for (let m in balances) {
+            let b = Math.round(balances[m] * 100) / 100;
+            if (b < -0.01) debtors.push({ name: m, amount: -b });
+            else if (b > 0.01) creditors.push({ name: m, amount: b });
+        }
+
+        let trans = [], i = 0, j = 0;
+        while (i < debtors.length && j < creditors.length) {
+            let d = debtors[i], c = creditors[j], amt = Math.min(d.amount, c.amount);
+            trans.push(`👉 <b>${d.name}</b> 過數 <b>HK$ ${amt.toFixed(2)}</b> 比 <b>${c.name}</b>`);
+            d.amount -= amt; c.amount -= amt;
+            if (d.amount < 0.01) i++;
+            if (c.amount < 0.01) j++;
+        }
+
+        let html = '<ul>';
+        for (let m in balances) {
+            let v = balances[m] || 0;
+            html += `<li>${m}: <b style="color:${v > 0.01 ? 'var(--success-color)' : (v < -0.01 ? 'var(--danger-color)' : 'inherit')}">${v >= 0 ? '+' : ''}${v.toFixed(2)}</b></li>`;
+        }
+        html += '</ul><strong>建議轉帳：</strong>' + (trans.length ? '<ul>' + trans.map(t => `<li>${t}</li>`).join('') + '</ul>' : '<p style="color:var(--success-color);">大家已平手！</p>');
+        container.innerHTML = html;
+    }
+</script>
+</body>
+</html>
