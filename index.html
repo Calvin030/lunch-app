@@ -48,12 +48,19 @@
 
         <div class="row-group" style="margin-top:5px;">
             <div>
-                <label>平台費/運費 (+)</label>
+                <label>平台費/運費 (+ HK$)</label>
                 <input type="number" id="expenseFee" value="0" placeholder="0.00" oninput="autoRecalc()">
             </div>
             <div>
-                <label>折扣優惠 (-)</label>
-                <input type="number" id="expenseDiscount" value="0" placeholder="0.00" oninput="autoRecalc()">
+                <label>折扣優惠 (例如 9折入 10%)</label>
+                <select id="discountType" onchange="autoRecalc()" style="margin-top:5px;">
+                    <option value="percent">百分比折扣 (%)</option>
+                    <option value="fixed">固定金額減免 ($)</option>
+                </select>
+            </div>
+            <div>
+                <label>折扣數值</label>
+                <input type="number" id="expenseDiscount" value="0" placeholder="例如 10 代表 9折" oninput="autoRecalc()">
             </div>
         </div>
 
@@ -63,8 +70,9 @@
         <label style="margin-top:15px; display:block;">各人叫咗幾多錢（原價）：</label>
         <div id="expenseSplitContainer" style="margin-top:5px;"></div>
 
-        <div style="background: #eff6ff; padding: 10px; border-radius: 6px; margin-top: 10px; font-weight: bold; color: var(--primary-color); display: flex; justify-content: space-between;">
+        <div style="background: #eff6ff; padding: 10px; border-radius: 6px; margin-top: 10px; font-weight: bold; color: var(--primary-color); display: flex; justify-content: space-between; flex-wrap: wrap; gap: 5px;">
             <span>原價總計: HK$ <span id="displayBaseTotal">0.00</span></span>
+            <span>折扣省埋: HK$ <span id="displayDiscountAmount">0.00</span></span>
             <span>實付總金額: HK$ <span id="finalDisplayAmount">0.00</span></span>
         </div>
         
@@ -156,51 +164,42 @@
         }
     }
 
-    // 根據原價、平台費、折扣自動計算每個人最終要畀幾多錢
     function autoRecalc() {
         const fee = parseFloat(document.getElementById('expenseFee').value) || 0;
-        const discount = parseFloat(document.getElementById('expenseDiscount').value) || 0;
+        const discountType = document.getElementById('discountType').value;
+        const discountInput = parseFloat(document.getElementById('expenseDiscount').value) || 0;
 
         const rows = document.querySelectorAll('.split-row');
         let baseTotal = 0;
         
-        // 收集所有剔選咗嘅人嘅原價
-        let checkedData = [];
         rows.forEach(row => {
             const cb = row.querySelector('.split-check');
             const input = row.querySelector('.split-amount');
             if (cb.checked) {
-                const baseVal = parseFloat(input.value) || 0;
-                baseTotal += baseVal;
-                checkedData.push({ input, baseVal });
+                baseTotal += parseFloat(input.value) || 0;
+                input.disabled = false;
             } else {
                 input.disabled = true;
             }
         });
 
         document.getElementById('displayBaseTotal').innerText = baseTotal.toFixed(2);
+
+        // 計算實際折咗幾多錢
+        let discountAmount = 0;
+        if (discountType === 'percent') {
+            // 例如入 10 代表 9折（即減 10%）
+            discountAmount = baseTotal * (discountInput / 100);
+        } else {
+            // 固定金額減免
+            discountAmount = discountInput;
+        }
+
+        document.getElementById('displayDiscountAmount').innerText = discountAmount.toFixed(2);
         
-        let finalTotal = baseTotal + fee - discount;
+        let finalTotal = baseTotal + fee - discountAmount;
         if (finalTotal < 0) finalTotal = 0;
         document.getElementById('finalDisplayAmount').innerText = finalTotal.toFixed(2);
-
-        // 如果有剔選人，將 平台費/折扣 按原價比例分攤落去
-        if (checkedData.length > 0) {
-            checkedData.forEach(item => {
-                item.input.disabled = false;
-                let adjusted = item.baseVal;
-                if (baseTotal > 0) {
-                    // 按原價比例分攤 (加運費、減折扣)
-                    let proportion = item.baseVal / baseTotal;
-                    adjusted = item.baseVal + (fee * proportion) - (discount * proportion);
-                } else {
-                    // 如果原價總和係 0，就由大家均分運費/折扣
-                    adjusted = (fee - discount) / checkedData.length;
-                }
-                // 喺輸入框旁邊顯示計算後嘅大約實付額（或者直接顯示原價畀用戶自己改，呢度我地將計算後嘅實付顯示出黎或鎖定）
-                // 為了直覺，輸入框依然保留原價畀用戶入，但下面可以顯示實付提示
-            });
-        }
     }
 
     function addExpense() {
@@ -208,7 +207,8 @@
         const date = document.getElementById('expenseDate').value;
         const title = document.getElementById('expenseTitle').value.trim();
         const fee = parseFloat(document.getElementById('expenseFee').value) || 0;
-        const discount = parseFloat(document.getElementById('expenseDiscount').value) || 0;
+        const discountType = document.getElementById('discountType').value;
+        const discountInput = parseFloat(document.getElementById('expenseDiscount').value) || 0;
         const payer = document.getElementById('expensePayer').value;
 
         if (!date || !title || !payer) {
@@ -232,19 +232,21 @@
             return alert('最少要選擇一個成員並輸入大於 0 的原價');
         }
 
-        let finalTotal = baseTotal + fee - discount;
+        let discountAmount = discountType === 'percent' ? baseTotal * (discountInput / 100) : discountInput;
+        let finalTotal = baseTotal + fee - discountAmount;
         if (finalTotal < 0) finalTotal = 0;
 
-        // 計算最終每個人實付金額（按原價比例分攤運費同折扣）
+        // 按原價比例分攤優惠同平台費
         let shares = {};
         for (let m in rawShares) {
             let baseVal = rawShares[m];
             let proportion = baseVal / baseTotal;
-            let finalVal = baseVal + (fee * proportion) - (discount * proportion);
-            shares[m] = Math.round(finalVal * 100) / 100; // 四捨五入到小數點後兩位
+            // 每個人的最終金額 = 佢嘅原價 + 佢佔比例嘅平台費 - 佢佔比例嘅折扣
+            let finalVal = baseVal + (fee * proportion) - (discountAmount * proportion);
+            shares[m] = Math.round(finalVal * 100) / 100;
         }
 
-        db.ref('lunchData/expenses').push({ date, title, baseTotal, fee, discount, finalTotal, payer, shares });
+        db.ref('lunchData/expenses').push({ date, title, baseTotal, fee, discountAmount, finalTotal, payer, shares });
         
         // 重設表單
         document.getElementById('expenseTitle').value = '';
@@ -280,7 +282,7 @@
                 shareText = Object.keys(e.shares).map(m => `${m}: $${e.shares[m]}`).join(', ');
             }
             let displayTotal = e.finalTotal !== undefined ? e.finalTotal : e.baseTotal;
-            let detailsHtml = `<div style="font-size:0.85rem; color:#64748b;">原價:$${e.baseTotal || 0} 運費:+$${e.fee || 0} 折扣:-$${e.discount || 0}</div><span style="font-size:0.9rem; color:#475569;">${shareText}</span>`;
+            let detailsHtml = `<div style="font-size:0.85rem; color:#64748b;">原價:$${e.baseTotal || 0} 運費:+$${e.fee || 0} 折扣:-$${e.discountAmount || 0}</div><span style="font-size:0.9rem; color:#475569;">${shareText}</span>`;
             
             return `<tr><td>${e.date || '未有日期'}</td><td>${e.title}</td><td>HK$ ${Number(displayTotal).toFixed(2)}</td><td>${e.payer}</td><td>${detailsHtml}</td><td><button onclick="deleteExpense('${e.id}')" style="padding:4px 8px;background:var(--danger-color);width:auto;">刪除</button></td></tr>`;
         }).join('') : '<tr><td colspan="6" style="text-align:center;color:#64748b;">暫無紀錄</td></tr>';
@@ -324,7 +326,7 @@
         let html = '<ul>';
         for (let m in balances) {
             let v = balances[m] || 0;
-            html += `<li>${m}: <b style="color:${v > 0.01 ? 'var(--success-color)' : (v < -0.01 ? 'var(--danger-color) ' : 'inherit')}">${v >= 0 ? '+' : ''}${v.toFixed(2)}</b></li>`;
+            html += `<li>${m}: <b style="color:${v > 0.01 ? 'var(--success-color)' : (v < -0.01 ? 'var(--danger-color)' : 'inherit')}">${v >= 0 ? '+' : ''}${v.toFixed(2)}</b></li>`;
         }
         html += '</ul><strong>建議轉帳：</strong>' + (trans.length ? '<ul>' + trans.map(t => `<li>${t}</li>`).join('') + '</ul>' : '<p style="color:var(--success-color);">大家已平手！</p>');
         container.innerHTML = html;
