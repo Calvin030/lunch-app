@@ -1,12 +1,4 @@
-﻿<!DOCTYPE html>
-<html lang="zh-HK">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>同事 Lunch 記帳 App</title>
-    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
-    <style>
+﻿    <style>
         :root { --primary-color: #2563eb; --bg-color: #f8fafc; --card-bg: #ffffff; --text-color: #1e293b; --border-color: #e2e8f0; --danger-color: #ef4444; --success-color: #10b981; }
         body { font-family: sans-serif; background-color: var(--bg-color); color: var(--text-color); margin: 0; padding: 20px; }
         .container { max-width: 800px; margin: 0 auto; }
@@ -62,10 +54,15 @@
 </div>
 
 <script>
-    // 已經幫你入好 lunch-app-81237 嘅資料
+    // 已經放入你剛剛提供的最新專屬設定
     const firebaseConfig = {
-        databaseURL: "https://lunch-app-81237-default-rtdb.firebaseio.com",
-        projectId: "lunch-app-81237"
+        apiKey: "AIzaSyAiV1kXzUjpYAhgYE6ON4GdH135cdgZ6oM",
+        authDomain: "lunch-app-81237.firebaseapp.com",
+        databaseURL: "https://lunch-app-81237-default-rtdb.asia-southeast1.firebasedatabase.app",
+        projectId: "lunch-app-81237",
+        storageBucket: "lunch-app-81237.firebasestorage.app",
+        messagingSenderId: "992239802907",
+        appId: "1:992239802907:web:bfbae1d538a6233b58f6be"
     };
 
     firebase.initializeApp(firebaseConfig);
