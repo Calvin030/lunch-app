@@ -1,12 +1,12 @@
-﻿  <!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="zh-HK">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>同事 Lunch 記帳 App</title>
-    <!-- 強制使用 HTTPS 載入 Firebase SDK -->
-    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
+    <!-- 換成雲端最穩陣嘅 CDN 引入方式 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/10.8.0/firebase-app-compat.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/10.8.0/firebase-database-compat.min.js"></script>
     <style>
         :root { --primary-color: #2563eb; --bg-color: #f8fafc; --card-bg: #ffffff; --text-color: #1e293b; --border-color: #e2e8f0; --danger-color: #ef4444; --success-color: #10b981; }
         body { font-family: sans-serif; background-color: var(--bg-color); color: var(--text-color); margin: 0; padding: 20px; }
@@ -63,7 +63,6 @@
 </div>
 
 <script>
-    // Firebase 設定
     const firebaseConfig = {
         apiKey: "AIzaSyAiV1kXzUjpYAhgYE6ON4GdH135cdgZ6oM",
         projectId: "lunch-app-81237",
