@@ -44,35 +44,50 @@
         <input type="date" id="expenseDate">
 
         <label>項目名稱</label>
-        <input type="text" id="expenseTitle" placeholder="例如: Deliveroo 叫外賣 / 堂食">
+        <input type="text" id="expenseTitle" placeholder="例如: 堂食 / 叫外賣">
 
-        <div class="row-group" style="margin-top:5px;">
-            <div>
-                <label>平台費/運費 (+ HK$)</label>
-                <input type="number" id="expenseFee" value="0" placeholder="0.00" oninput="autoRecalc()">
+        <label style="margin-top:10px;">分帳模式</label>
+        <select id="splitMode" onchange="toggleSplitMode()">
+            <option value="custom">按原價 / 各自金額輸入</option>
+            <option value="equal">全單直接平分 (AA制)</option>
+        </select>
+
+        <!-- 只有自訂原價模式先需要填運費同折扣 -->
+        <div id="extraCostSection">
+            <div class="row-group" style="margin-top:5px;">
+                <div>
+                    <label>平台費/運費 (+ HK$)</label>
+                    <input type="number" id="expenseFee" value="0" placeholder="0.00" oninput="autoRecalc()">
+                </div>
+                <div>
+                    <label>折扣優惠類型</label>
+                    <select id="discountType" onchange="autoRecalc()" style="margin-top:5px;">
+                        <option value="percent">百分比折扣 (%)</option>
+                        <option value="fixed">固定金額減免 ($)</option>
+                    </select>
+                </div>
+                <div>
+                    <label>折扣數值</label>
+                    <input type="number" id="expenseDiscount" value="0" placeholder="例如 10 代表 9折" oninput="autoRecalc()">
+                </div>
             </div>
-            <div>
-                <label>折扣優惠 (例如 9折入 10%)</label>
-                <select id="discountType" onchange="autoRecalc()" style="margin-top:5px;">
-                    <option value="percent">百分比折扣 (%)</option>
-                    <option value="fixed">固定金額減免 ($)</option>
-                </select>
-            </div>
-            <div>
-                <label>折扣數值</label>
-                <input type="number" id="expenseDiscount" value="0" placeholder="例如 10 代表 9折" oninput="autoRecalc()">
-            </div>
+        </div>
+
+        <!-- 平分模式專用總金額輸入 -->
+        <div id="equalAmountSection" style="display:none; margin-top:10px;">
+            <label>總消費金額 (HK$)</label>
+            <input type="number" id="equalTotalAmount" value="0" placeholder="0.00" oninput="autoRecalc()">
         </div>
 
         <label style="margin-top:15px;">邊個畀錢？</label>
         <select id="expensePayer"></select>
         
-        <label style="margin-top:15px; display:block;">各人叫咗幾多錢（原價）：</label>
+        <label style="margin-top:15px; display:block;" id="splitListLabel">各人叫咗幾多錢（原價）：</label>
         <div id="expenseSplitContainer" style="margin-top:5px;"></div>
 
         <div style="background: #eff6ff; padding: 10px; border-radius: 6px; margin-top: 10px; font-weight: bold; color: var(--primary-color); display: flex; justify-content: space-between; flex-wrap: wrap; gap: 5px;">
-            <span>原價總計: HK$ <span id="displayBaseTotal">0.00</span></span>
-            <span>折扣省埋: HK$ <span id="displayDiscountAmount">0.00</span></span>
+            <span id="summaryBaseBox">原價總計: HK$ <span id="displayBaseTotal">0.00</span></span>
+            <span id="summaryDiscountBox">折扣省埋: HK$ <span id="displayDiscountAmount">0.00</span></span>
             <span>實付總金額: HK$ <span id="finalDisplayAmount">0.00</span></span>
         </div>
         
@@ -146,112 +161,170 @@
         db.ref('lunchData/members').set(members);
     }
 
+    function toggleSplitMode() {
+        const mode = document.getElementById('splitMode').value;
+        const extraCostSection = document.getElementById('extraCostSection');
+        const equalAmountSection = document.getElementById('equalAmountSection');
+        const splitListLabel = document.getElementById('splitListLabel');
+        const summaryBaseBox = document.getElementById('summaryBaseBox');
+        const summaryDiscountBox = document.getElementById('summaryDiscountBox');
+
+        if (mode === 'equal') {
+            extraCostSection.style.display = 'none';
+            equalAmountSection.style.display = 'block';
+            splitListLabel.innerText = '選擇參與平分嘅成員：';
+            summaryBaseBox.style.display = 'none';
+            summaryDiscountBox.style.display = 'none';
+        } else {
+            extraCostSection.style.display = 'block';
+            equalAmountSection.style.display = 'none';
+            splitListLabel.innerText = '各人叫咗幾多錢（原價）：';
+            summaryBaseBox.style.display = 'inline';
+            summaryDiscountBox.style.display = 'inline';
+        }
+        initSplitInputs();
+    }
+
     function initSplitInputs() {
         const container = document.getElementById('expenseSplitContainer');
+        const mode = document.getElementById('splitMode').value;
+
         if (members.length === 0) {
             container.innerHTML = '<p style="color:#64748b;">請先新增成員</p>';
             return;
         }
         
-        if (container.children.length !== members.length) {
-            container.innerHTML = members.map(m => `
-                <div class="split-row">
-                    <label><input type="checkbox" class="split-check" value="${m}" checked onchange="autoRecalc()"> ${m}</label>
-                    <input type="number" class="split-amount" data-member="${m}" value="0.00" step="0.1" placeholder="原價" oninput="autoRecalc()">
-                </div>
-            `).join('');
-            autoRecalc();
-        }
+        container.innerHTML = members.map(m => `
+            <div class="split-row">
+                <label><input type="checkbox" class="split-check" value="${m}" checked onchange="autoRecalc()"> ${m}</label>
+                ${mode === 'custom' ? '<input type="number" class="split-amount" data-member="' + m + '" value="0.00" step="0.1" placeholder="原價" oninput="autoRecalc()">' : ''}
+            </div>
+        `).join('');
+        autoRecalc();
     }
 
     function autoRecalc() {
-        const fee = parseFloat(document.getElementById('expenseFee').value) || 0;
-        const discountType = document.getElementById('discountType').value;
-        const discountInput = parseFloat(document.getElementById('expenseDiscount').value) || 0;
+        const mode = document.getElementById('splitMode').value;
+        let finalTotal = 0;
 
-        const rows = document.querySelectorAll('.split-row');
-        let baseTotal = 0;
-        
-        rows.forEach(row => {
-            const cb = row.querySelector('.split-check');
-            const input = row.querySelector('.split-amount');
-            if (cb.checked) {
-                baseTotal += parseFloat(input.value) || 0;
-                input.disabled = false;
-            } else {
-                input.disabled = true;
-            }
-        });
-
-        document.getElementById('displayBaseTotal').innerText = baseTotal.toFixed(2);
-
-        // 計算實際折咗幾多錢
-        let discountAmount = 0;
-        if (discountType === 'percent') {
-            // 例如入 10 代表 9折（即減 10%）
-            discountAmount = baseTotal * (discountInput / 100);
+        if (mode === 'equal') {
+            finalTotal = parseFloat(document.getElementById('equalTotalAmount').value) || 0;
+            document.getElementById('finalDisplayAmount').innerText = finalTotal.toFixed(2);
         } else {
-            // 固定金額減免
-            discountAmount = discountInput;
-        }
+            const fee = parseFloat(document.getElementById('expenseFee').value) || 0;
+            const discountType = document.getElementById('discountType').value;
+            const discountInput = parseFloat(document.getElementById('expenseDiscount').value) || 0;
 
-        document.getElementById('displayDiscountAmount').innerText = discountAmount.toFixed(2);
-        
-        let finalTotal = baseTotal + fee - discountAmount;
-        if (finalTotal < 0) finalTotal = 0;
-        document.getElementById('finalDisplayAmount').innerText = finalTotal.toFixed(2);
+            const rows = document.querySelectorAll('.split-row');
+            let baseTotal = 0;
+            
+            rows.forEach(row => {
+                const cb = row.querySelector('.split-check');
+                const input = row.querySelector('.split-amount');
+                if (cb && input) {
+                    if (cb.checked) {
+                        baseTotal += parseFloat(input.value) || 0;
+                        input.disabled = false;
+                    } else {
+                        input.disabled = true;
+                    }
+                }
+            });
+
+            document.getElementById('displayBaseTotal').innerText = baseTotal.toFixed(2);
+
+            let discountAmount = discountType === 'percent' ? baseTotal * (discountInput / 100) : discountInput;
+            document.getElementById('displayDiscountAmount').innerText = discountAmount.toFixed(2);
+            
+            finalTotal = baseTotal + fee - discountAmount;
+            if (finalTotal < 0) finalTotal = 0;
+            document.getElementById('finalDisplayAmount').innerText = finalTotal.toFixed(2);
+        }
     }
 
     function addExpense() {
         if (!db) return alert('資料庫尚未連線');
         const date = document.getElementById('expenseDate').value;
         const title = document.getElementById('expenseTitle').value.trim();
-        const fee = parseFloat(document.getElementById('expenseFee').value) || 0;
-        const discountType = document.getElementById('discountType').value;
-        const discountInput = parseFloat(document.getElementById('expenseDiscount').value) || 0;
+        const mode = document.getElementById('splitMode').value;
         const payer = document.getElementById('expensePayer').value;
 
         if (!date || !title || !payer) {
             return alert('請完整填寫日期、項目名稱及付款人');
         }
 
-        let baseTotal = 0;
-        let rawShares = {};
+        let shares = {};
+        let finalTotal = 0;
+        let recordData = { date, title, mode, payer };
+
         const rows = document.querySelectorAll('.split-row');
+        let checkedMembers = [];
         rows.forEach(row => {
             const cb = row.querySelector('.split-check');
-            const input = row.querySelector('.split-amount');
-            if (cb.checked) {
-                const val = parseFloat(input.value) || 0;
-                rawShares[cb.value] = val;
-                baseTotal += val;
+            if (cb && cb.checked) {
+                checkedMembers.push(cb.value);
             }
         });
 
-        if (Object.keys(rawShares).length === 0 || baseTotal <= 0) {
-            return alert('最少要選擇一個成員並輸入大於 0 的原價');
+        if (checkedMembers.length === 0) {
+            return alert('最少要選擇一個參與成員');
         }
 
-        let discountAmount = discountType === 'percent' ? baseTotal * (discountInput / 100) : discountInput;
-        let finalTotal = baseTotal + fee - discountAmount;
-        if (finalTotal < 0) finalTotal = 0;
+        if (mode === 'equal') {
+            finalTotal = parseFloat(document.getElementById('equalTotalAmount').value) || 0;
+            if (finalTotal <= 0) return alert('請輸入大於 0 的總金額');
 
-        // 按原價比例分攤優惠同平台費
-        let shares = {};
-        for (let m in rawShares) {
-            let baseVal = rawShares[m];
-            let proportion = baseVal / baseTotal;
-            // 每個人的最終金額 = 佢嘅原價 + 佢佔比例嘅平台費 - 佢佔比例嘅折扣
-            let finalVal = baseVal + (fee * proportion) - (discountAmount * proportion);
-            shares[m] = Math.round(finalVal * 100) / 100;
+            let perPerson = Math.round((finalTotal / checkedMembers.length) * 100) / 100;
+            checkedMembers.forEach(m => {
+                shares[m] = perPerson;
+            });
+            recordData.finalTotal = finalTotal;
+            recordData.shares = shares;
+
+        } else {
+            let baseTotal = 0;
+            let rawShares = {};
+            rows.forEach(row => {
+                const cb = row.querySelector('.split-check');
+                const input = row.querySelector('.split-amount');
+                if (cb && cb.checked && input) {
+                    const val = parseFloat(input.value) || 0;
+                    rawShares[cb.value] = val;
+                    baseTotal += val;
+                }
+            });
+
+            if (baseTotal <= 0) return alert('請輸入大於 0 的原價總額');
+
+            const fee = parseFloat(document.getElementById('expenseFee').value) || 0;
+            const discountType = document.getElementById('discountType').value;
+            const discountInput = parseFloat(document.getElementById('expenseDiscount').value) || 0;
+            let discountAmount = discountType === 'percent' ? baseTotal * (discountInput / 100) : discountInput;
+            
+            finalTotal = baseTotal + fee - discountAmount;
+            if (finalTotal < 0) finalTotal = 0;
+
+            for (let m in rawShares) {
+                let baseVal = rawShares[m];
+                let proportion = baseVal / baseTotal;
+                let finalVal = baseVal + (fee * proportion) - (discountAmount * proportion);
+                shares[m] = Math.round(finalVal * 100) / 100;
+            }
+
+            recordData.baseTotal = baseTotal;
+            recordData.fee = fee;
+            recordData.discountAmount = discountAmount;
+            recordData.finalTotal = finalTotal;
+            recordData.shares = shares;
         }
 
-        db.ref('lunchData/expenses').push({ date, title, baseTotal, fee, discountAmount, finalTotal, payer, shares });
+        db.ref('lunchData/expenses').push(recordData);
         
         // 重設表單
         document.getElementById('expenseTitle').value = '';
         document.getElementById('expenseFee').value = '0';
         document.getElementById('expenseDiscount').value = '0';
+        document.getElementById('equalTotalAmount').value = '0';
         const today = new Date().toISOString().split('T')[0];
         document.getElementById('expenseDate').value = today;
         initSplitInputs();
@@ -281,8 +354,13 @@
             if (e.shares) {
                 shareText = Object.keys(e.shares).map(m => `${m}: $${e.shares[m]}`).join(', ');
             }
-            let displayTotal = e.finalTotal !== undefined ? e.finalTotal : e.baseTotal;
-            let detailsHtml = `<div style="font-size:0.85rem; color:#64748b;">原價:$${e.baseTotal || 0} 運費:+$${e.fee || 0} 折扣:-$${e.discountAmount || 0}</div><span style="font-size:0.9rem; color:#475569;">${shareText}</span>`;
+            let displayTotal = e.finalTotal !== undefined ? e.finalTotal : (e.baseTotal || 0);
+            let detailsHtml = '';
+            if (e.mode === 'equal') {
+                detailsHtml = `<div style="font-size:0.85rem; color:#64748b;">模式: 全單平分 (AA)</div><span style="font-size:0.9rem; color:#475569;">${shareText}</span>`;
+            } else {
+                detailsHtml = `<div style="font-size:0.85rem; color:#64748b;">原價:$${e.baseTotal || 0} 運費:+$${e.fee || 0} 折扣:-$${e.discountAmount || 0}</div><span style="font-size:0.9rem; color:#475569;">${shareText}</span>`;
+            }
             
             return `<tr><td>${e.date || '未有日期'}</td><td>${e.title}</td><td>HK$ ${Number(displayTotal).toFixed(2)}</td><td>${e.payer}</td><td>${detailsHtml}</td><td><button onclick="deleteExpense('${e.id}')" style="padding:4px 8px;background:var(--danger-color);width:auto;">刪除</button></td></tr>`;
         }).join('') : '<tr><td colspan="6" style="text-align:center;color:#64748b;">暫無紀錄</td></tr>';
@@ -297,7 +375,7 @@
         members.forEach(m => balances[m] = 0);
         
         expenses.forEach(e => {
-            const total = e.finalTotal !== undefined ? Number(e.finalTotal) : Number(e.baseTotal);
+            const total = e.finalTotal !== undefined ? Number(e.finalTotal) : Number(e.baseTotal || 0);
             balances[e.payer] += total;
 
             if (e.shares) {
