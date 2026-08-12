@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>同事 Lunch 記帳 App</title>
-    <!-- 換成雲端最穩陣嘅 CDN 引入方式 -->
+    <!-- 雲端 CDN 引入方式 -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/10.8.0/firebase-app-compat.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/10.8.0/firebase-database-compat.min.js"></script>
     <style>
@@ -63,10 +63,11 @@
 </div>
 
 <script>
+    // 使用正確地區的 databaseURL
     const firebaseConfig = {
         apiKey: "AIzaSyAiV1kXzUjpYAhgYE6ON4GdH135cdgZ6oM",
         projectId: "lunch-app-81237",
-        databaseURL: "https://lunch-app-81237-default-rtdb.firebaseio.com"
+        databaseURL: "https://lunch-app-81237-default-rtdb.asia-southeast1.firebasedatabase.app"
     };
 
     let members = [];
