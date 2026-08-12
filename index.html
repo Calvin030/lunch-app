@@ -22,6 +22,8 @@
         .tag { display: inline-block; background: #e2e8f0; padding: 4px 8px; border-radius: 4px; font-size: 0.85rem; margin: 2px; }
         .split-row { display: flex; align-items: center; justify-content: space-between; margin-top: 8px; background: #f8fafc; padding: 8px; border-radius: 6px; }
         .split-row input[type="number"] { width: 100px; margin-top: 0; }
+        .row-group { display: flex; gap: 10px; }
+        .row-group > div { flex: 1; }
     </style>
 </head>
 <body>
@@ -37,20 +39,36 @@
     </div>
 
     <div class="card">
-        <h2>💸 記一筆洗費</h2>
+        <h2>💸 記一筆洗費（外賣 / 餐廳）</h2>
         <label>消費日期</label>
         <input type="date" id="expenseDate">
 
         <label>項目名稱</label>
-        <input type="text" id="expenseTitle" placeholder="例如: 下午茶 / 飲品">
+        <input type="text" id="expenseTitle" placeholder="例如: Deliveroo 叫外賣 / 堂食">
 
-        <label>總金額 (HK$)</label>
-        <input type="number" id="expenseAmount" placeholder="0.00" oninput="autoSplitEvenly()">
+        <div class="row-group" style="margin-top:5px;">
+            <div>
+                <label>食物總金額 (HK$)</label>
+                <input type="number" id="expenseAmount" placeholder="0.00" oninput="autoCalculateFinal()">
+            </div>
+            <div>
+                <label>平台費/運費 (+)</label>
+                <input type="number" id="expenseFee" value="0" placeholder="0.00" oninput="autoCalculateFinal()">
+            </div>
+            <div>
+                <label>折扣優惠 (-)</label>
+                <input type="number" id="expenseDiscount" value="0" placeholder="0.00" oninput="autoCalculateFinal()">
+            </div>
+        </div>
 
-        <label>邊個畀錢？</label>
+        <div style="background: #eff6ff; padding: 10px; border-radius: 6px; margin-top: 10px; font-weight: bold; color: var(--primary-color);">
+            💰 最終實付總金額: HK$ <span id="finalDisplayAmount">0.00</span>
+        </div>
+
+        <label style="margin-top:15px;">邊個畀錢？</label>
         <select id="expensePayer"></select>
         
-        <label style="margin-top:15px; display:block;">選擇參與者及分擔金額（剔選後會自動平分，亦可自由修改）：</label>
+        <label style="margin-top:15px; display:block;">選擇參與者及分擔金額（預設平分，改其中一個會自動幫其餘人均分剩餘數）：</label>
         <div id="expenseSplitContainer" style="margin-top:5px;"></div>
         
         <button onclick="addExpense()">新增紀錄</button>
@@ -59,7 +77,7 @@
     <div class="card">
         <h2>📋 歷史明細</h2>
         <table>
-            <thead><tr><th>日期</th><th>項目</th><th>總額</th><th>付款人</th><th>分擔詳情</th><th>操作</th></tr></thead>
+            <thead><tr><th>日期</th><th>項目</th><th>實付總額</th><th>付款人</th><th>分擔詳情</th><th>操作</th></tr></thead>
             <tbody id="expenseTableBody"><tr><td colspan="6" style="text-align:center; color:#64748b;">載入中...</td></tr></tbody>
         </table>
     </div>
@@ -82,7 +100,6 @@
     let expenses = [];
     let db = null;
 
-    // 網頁載入時，自動設定日期欄位為今日
     window.addEventListener('DOMContentLoaded', () => {
         const today = new Date().toISOString().split('T')[0];
         document.getElementById('expenseDate').value = today;
@@ -134,46 +151,101 @@
         if (container.children.length !== members.length) {
             container.innerHTML = members.map(m => `
                 <div class="split-row">
-                    <label><input type="checkbox" class="split-check" value="${m}" checked onchange="autoSplitEvenly()"> ${m}</label>
-                    <input type="number" class="split-amount" data-member="${m}" value="0.00" step="0.1">
+                    <label><input type="checkbox" class="split-check" value="${m}" checked onchange="autoCalculateFinal()"> ${m}</label>
+                    <input type="number" class="split-amount" data-member="${m}" value="0.00" step="0.1" oninput="onAmountChanged(this)">
                 </div>
             `).join('');
-            autoSplitEvenly();
+            autoCalculateFinal();
         }
     }
 
-    function autoSplitEvenly() {
-        const total = parseFloat(document.getElementById('expenseAmount').value) || 0;
+    // 計算最終總金額，並在未被手動調整過嘅欄位進行均分
+    function autoCalculateFinal() {
+        const amount = parseFloat(document.getElementById('expenseAmount').value) || 0;
+        const fee = parseFloat(document.getElementById('expenseFee').value) || 0;
+        const discount = parseFloat(document.getElementById('expenseDiscount').value) || 0;
+        
+        let finalTotal = amount + fee - discount;
+        if (finalTotal < 0) finalTotal = 0;
+        
+        document.getElementById('finalDisplayAmount').innerText = finalTotal.toFixed(2);
+
         const rows = document.querySelectorAll('.split-row');
-        
         const checkedRows = Array.from(rows).filter(r => r.querySelector('.split-check').checked);
-        const count = checkedRows.length;
         
-        const share = count > 0 ? (total / count).toFixed(2) : 0;
+        // 如果無人被剔選，直接離開
+        if (checkedRows.length === 0) return;
+
+        // 檢查有幾多個輸入框係「未被手動鎖定」或者全部重新平分
+        // 為了簡單流暢：當總金額或者勾選改變時，預設幫所有勾選的人重新平分
+        const share = (finalTotal / checkedRows.length).toFixed(2);
 
         rows.forEach(row => {
             const cb = row.querySelector('.split-check');
             const input = row.querySelector('.split-amount');
             if (cb.checked) {
-                input.value = share;
+                // 只有在未手動標記修改過嘅情況下先重設（用 dataset 做標記）
+                if (input.dataset.manual !== "true") {
+                    input.value = share;
+                }
                 input.disabled = false;
             } else {
                 input.value = "0.00";
                 input.disabled = true;
+                input.dataset.manual = "false";
             }
         });
+    }
+
+    // 當用戶手動改其中一個人的銀碼時觸發
+    function onAmountChanged(changedInput) {
+        changedInput.dataset.manual = "true"; // 標記為呢個已被手動修改
+
+        const finalTotal = parseFloat(document.getElementById('finalDisplayAmount').innerText) || 0;
+        const rows = document.querySelectorAll('.split-row');
+        
+        let manualSum = 0;
+        let autoRows = [];
+
+        rows.forEach(row => {
+            const cb = row.querySelector('.split-check');
+            const input = row.querySelector('.split-amount');
+            if (cb.checked) {
+                if (input.dataset.manual === "true") {
+                    manualSum += parseFloat(input.value) || 0;
+                } else {
+                    autoRows.push(input);
+                }
+            }
+        });
+
+        // 剩低嘅金額畀自動平分嘅人
+        let remaining = finalTotal - manualSum;
+        if (remaining < 0) remaining = 0;
+
+        if (autoRows.length > 0) {
+            let autoShare = (remaining / autoRows.length).toFixed(2);
+            autoRows.forEach(input => {
+                input.value = autoShare;
+            });
+        }
     }
 
     function addExpense() {
         if (!db) return alert('資料庫尚未連線');
         const date = document.getElementById('expenseDate').value;
         const title = document.getElementById('expenseTitle').value.trim();
-        const totalAmount = parseFloat(document.getElementById('expenseAmount').value);
+        const amount = parseFloat(document.getElementById('expenseAmount').value);
+        const fee = parseFloat(document.getElementById('expenseFee').value) || 0;
+        const discount = parseFloat(document.getElementById('expenseDiscount').value) || 0;
         const payer = document.getElementById('expensePayer').value;
 
-        if (!date || !title || isNaN(totalAmount) || totalAmount <= 0 || !payer) {
-            return alert('請完整填寫日期、項目名稱、總金額及付款人');
+        if (!date || !title || isNaN(amount) || amount <= 0 || !payer) {
+            return alert('請完整填寫日期、項目名稱、食物金額及付款人');
         }
+
+        let finalTotal = amount + fee - discount;
+        if (finalTotal < 0) finalTotal = 0;
 
         let shares = {};
         const rows = document.querySelectorAll('.split-row');
@@ -190,13 +262,18 @@
             return alert('最少要選擇一個分擔人');
         }
 
-        db.ref('lunchData/expenses').push({ date, title, totalAmount, payer, shares });
+        db.ref('lunchData/expenses').push({ date, title, amount, fee, discount, finalTotal, payer, shares });
         
         // 重設表單
         document.getElementById('expenseTitle').value = '';
         document.getElementById('expenseAmount').value = '';
+        document.getElementById('expenseFee').value = '0';
+        document.getElementById('expenseDiscount').value = '0';
         const today = new Date().toISOString().split('T')[0];
         document.getElementById('expenseDate').value = today;
+        
+        // 清除手動修改標記
+        document.querySelectorAll('.split-amount').forEach(i => i.dataset.manual = "false");
         initSplitInputs();
     }
 
@@ -217,20 +294,17 @@
         initSplitInputs();
 
         const tbody = document.getElementById('expenseTableBody');
-        // 按日期排序（最新的排在前面）
         const sortedExpenses = [...expenses].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
 
         tbody.innerHTML = sortedExpenses.length ? sortedExpenses.map(e => {
             let shareText = '';
             if (e.shares) {
                 shareText = Object.keys(e.shares).map(m => `${m}: $${e.shares[m]}`).join(', ');
-            } else if (e.participants && e.amount) {
-                let per = (e.amount / e.participants.length).toFixed(1);
-                shareText = e.participants.map(p => `${p}: $${per}`).join(', ');
             }
-            const displayTotal = e.totalAmount !== undefined ? e.totalAmount : e.amount;
-            const displayDate = e.date || '未有日期';
-            return `<tr><td>${displayDate}</td><td>${e.title}</td><td>HK$ ${Number(displayTotal).toFixed(2)}</td><td>${e.payer}</td><td><span style="font-size:0.9rem; color:#475569;">${shareText}</span></td><td><button onclick="deleteExpense('${e.id}')" style="padding:4px 8px;background:var(--danger-color);width:auto;">刪除</button></td></tr>`;
+            let displayTotal = e.finalTotal !== undefined ? e.finalTotal : (e.totalAmount !== undefined ? e.totalAmount : e.amount);
+            let detailsHtml = `<div style="font-size:0.85rem; color:#64748b;">食物:$${e.amount || 0} 平台費:+$${e.fee || 0} 折扣:-$${e.discount || 0}</div><span style="font-size:0.9rem; color:#475569;">${shareText}</span>`;
+            
+            return `<tr><td>${e.date || '未有日期'}</td><td>${e.title}</td><td>HK$ ${Number(displayTotal).toFixed(2)}</td><td>${e.payer}</td><td>${detailsHtml}</td><td><button onclick="deleteExpense('${e.id}')" style="padding:4px 8px;background:var(--danger-color);width:auto;">刪除</button></td></tr>`;
         }).join('') : '<tr><td colspan="6" style="text-align:center;color:#64748b;">暫無紀錄</td></tr>';
 
         const container = document.getElementById('settlementResult');
@@ -243,16 +317,13 @@
         members.forEach(m => balances[m] = 0);
         
         expenses.forEach(e => {
-            const total = e.totalAmount !== undefined ? Number(e.totalAmount) : Number(e.amount);
+            const total = e.finalTotal !== undefined ? Number(e.finalTotal) : (e.totalAmount !== undefined ? Number(e.totalAmount) : Number(e.amount));
             balances[e.payer] += total;
 
             if (e.shares) {
                 for (let m in e.shares) {
                     if (balances[m] !== undefined) balances[m] -= Number(e.shares[m]);
                 }
-            } else if (e.participants) {
-                const share = total / e.participants.length;
-                e.participants.forEach(p => { if (balances[p] !== undefined) balances[p] -= share; });
             }
         });
 
