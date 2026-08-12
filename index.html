@@ -39,13 +39,13 @@
     <div class="card">
         <h2>💸 記一筆洗費</h2>
         <label>項目名稱</label>
-        <input type="text" id="expenseTitle" placeholder="例如: 慶功大餐">
+        <input type="text" id="expenseTitle" placeholder="例如: 下午茶 / 飲品">
         <label>總金額 (HK$)</label>
-        <input type="number" id="expenseAmount" placeholder="0.00" oninput="updateSplitInputs()">
+        <input type="number" id="expenseAmount" placeholder="0.00" oninput="autoSplitEvenly()">
         <label>邊個畀錢？</label>
         <select id="expensePayer"></select>
         
-        <label style="margin-top:15px; display:block;">各人分擔金額（可自由修改不平均金額）：</label>
+        <label style="margin-top:15px; display:block;">選擇參與者及分擔金額（剔選後會自動平分，亦可自由修改）：</label>
         <div id="expenseSplitContainer" style="margin-top:5px;"></div>
         
         <button onclick="addExpense()">新增紀錄</button>
@@ -113,24 +113,47 @@
         db.ref('lunchData/members').set(members);
     }
 
-    function updateSplitInputs() {
-        const total = parseFloat(document.getElementById('expenseAmount').value) || 0;
+    // 初始化或重新整理分擔名單（預設全選，但金額會根據勾選人數平均分）
+    function initSplitInputs() {
         const container = document.getElementById('expenseSplitContainer');
         if (members.length === 0) {
             container.innerHTML = '<p style="color:#64748b;">請先新增同事</p>';
             return;
         }
-        const share = members.length > 0 ? (total / members.length).toFixed(2) : 0;
-        container.innerHTML = members.map(m => `
-            <div class="split-row">
-                <label><input type="checkbox" class="split-check" value="${m}" checked onchange="recalcSplit()"> ${m}</label>
-                <input type="number" class="split-amount" data-member="${m}" value="${share}" step="0.1">
-            </div>
-        `).join('');
+        
+        // 如果容器入面仲未有嘢，就建立預設全選狀態
+        if (container.children.length !== members.length) {
+            container.innerHTML = members.map(m => `
+                <div class="split-row">
+                    <label><input type="checkbox" class="split-check" value="${m}" checked onchange="autoSplitEvenly()"> ${m}</label>
+                    <input type="number" class="split-amount" data-member="${m}" value="0.00" step="0.1">
+                </div>
+            `).join('');
+            autoSplitEvenly();
+        }
     }
 
-    function recalcSplit() {
-        // 當勾選改變時，可以自動幫未勾選的歸零，或重新平均分佈（保持簡單讓用戶自由發揮）
+    // 當總金額改變或勾選狀態改變時，自動幫已勾選的人平分金額
+    function autoSplitEvenly() {
+        const total = parseFloat(document.getElementById('expenseAmount').value) || 0;
+        const rows = document.querySelectorAll('.split-row');
+        
+        const checkedRows = Array.from(rows).filter(r => r.querySelector('.split-check').checked);
+        const count = checkedRows.length;
+        
+        const share = count > 0 ? (total / count).toFixed(2) : 0;
+
+        rows.forEach(row => {
+            const cb = row.querySelector('.split-check');
+            const input = row.querySelector('.split-amount');
+            if (cb.checked) {
+                input.value = share;
+                input.disabled = false;
+            } else {
+                input.value = "0.00";
+                input.disabled = true; // 冇份食嘅直接鎖死變 0
+            }
+        });
     }
 
     function addExpense() {
@@ -144,7 +167,6 @@
         }
 
         let shares = {};
-        let sum = 0;
         const rows = document.querySelectorAll('.split-row');
         rows.forEach(row => {
             const cb = row.querySelector('.split-check');
@@ -152,7 +174,6 @@
             if (cb.checked) {
                 const val = parseFloat(input.value) || 0;
                 shares[cb.value] = val;
-                sum += val;
             }
         });
 
@@ -163,7 +184,7 @@
         db.ref('lunchData/expenses').push({ title, totalAmount, payer, shares });
         document.getElementById('expenseTitle').value = '';
         document.getElementById('expenseAmount').value = '';
-        updateSplitInputs();
+        initSplitInputs();
     }
 
     function deleteExpense(id) {
@@ -180,7 +201,7 @@
         document.getElementById('memberTags').innerHTML = members.map(m => `<span class="tag">${m} <span onclick="removeMember('${m}')" style="cursor:pointer;color:red;font-weight:bold;">&times;</span></span>`).join('') || '未有同事';
         document.getElementById('expensePayer').innerHTML = members.map(m => `<option value="${m}">${m}</option>`).join('') || '<option>請先加同事</option>';
         
-        updateSplitInputs();
+        initSplitInputs();
 
         const tbody = document.getElementById('expenseTableBody');
         tbody.innerHTML = expenses.length ? expenses.map(e => {
@@ -188,7 +209,6 @@
             if (e.shares) {
                 shareText = Object.keys(e.shares).map(m => `${m}: $${e.shares[m]}`).join(', ');
             } else if (e.participants && e.amount) {
-                // 相容舊資料
                 let per = (e.amount / e.participants.length).toFixed(1);
                 shareText = e.participants.map(p => `${p}: $${per}`).join(', ');
             }
