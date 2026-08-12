@@ -1,10 +1,10 @@
-﻿   <!DOCTYPE html>
+﻿  <!DOCTYPE html>
 <html lang="zh-HK">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>同事 Lunch 記帳 App</title>
-    <!-- Firebase SDK Compat 版本 -->
+    <!-- 強制使用 HTTPS 載入 Firebase SDK -->
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
     <style>
@@ -63,31 +63,39 @@
 </div>
 
 <script>
-    // 已經使用最標準穩定嘅 Firebase 設定
+    // Firebase 設定
     const firebaseConfig = {
         apiKey: "AIzaSyAiV1kXzUjpYAhgYE6ON4GdH135cdgZ6oM",
         projectId: "lunch-app-81237",
         databaseURL: "https://lunch-app-81237-default-rtdb.firebaseio.com"
     };
 
-    firebase.initializeApp(firebaseConfig);
-    const db = firebase.database();
-
     let members = [];
     let expenses = [];
+    let db = null;
 
-    db.ref('lunchData').on('value', (snapshot) => {
-        const data = snapshot.val() || {};
-        members = data.members || [];
-        expenses = data.expenses ? Object.keys(data.expenses).map(k => ({ id: k, ...data.expenses[k] })) : [];
-        render();
-        document.getElementById('syncStatus').innerText = '🟢 雲端同步連線成功！';
-    }, (error) => {
-        console.error(error);
-        document.getElementById('syncStatus').innerText = '🔴 連線失敗: ' + error.message;
-    });
+    try {
+        firebase.initializeApp(firebaseConfig);
+        db = firebase.database();
+
+        db.ref('lunchData').on('value', (snapshot) => {
+            const data = snapshot.val() || {};
+            members = data.members || [];
+            expenses = data.expenses ? Object.keys(data.expenses).map(k => ({ id: k, ...data.expenses[k] })) : [];
+            render();
+            document.getElementById('syncStatus').innerText = '🟢 雲端同步連線成功！';
+            document.getElementById('syncStatus').style.color = 'var(--success-color)';
+        }, (error) => {
+            console.error(error);
+            document.getElementById('syncStatus').innerText = '🔴 數據讀取失敗: ' + error.message;
+        });
+    } catch (e) {
+        console.error(e);
+        document.getElementById('syncStatus').innerText = '🔴 Firebase 初始化失敗: ' + e.message;
+    }
 
     function addMember() {
+        if (!db) return alert('資料庫尚未連線');
         const name = document.getElementById('memberNameInput').value.trim();
         if (!name) return alert('請輸入姓名');
         if (members.includes(name)) return alert('同事已存在');
@@ -97,11 +105,13 @@
     }
 
     function removeMember(name) {
+        if (!db) return;
         members = members.filter(m => m !== name);
         db.ref('lunchData/members').set(members);
     }
 
     function addExpense() {
+        if (!db) return alert('資料庫尚未連線');
         const title = document.getElementById('expenseTitle').value.trim();
         const amount = parseFloat(document.getElementById('expenseAmount').value);
         const payer = document.getElementById('expensePayer').value;
@@ -117,10 +127,12 @@
     }
 
     function deleteExpense(id) {
+        if (!db) return;
         db.ref(`lunchData/expenses/${id}`).remove();
     }
 
     function resetAllData() {
+        if (!db) return;
         if (confirm('確定清空所有資料？')) db.ref('lunchData').remove();
     }
 
