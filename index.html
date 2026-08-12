@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>同事 Lunch 記帳 App</title>
+    <title>Lunch 記帳 App</title>
     <!-- 雲端 CDN 引入方式 -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/10.8.0/firebase-app-compat.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/10.8.0/firebase-database-compat.min.js"></script>
@@ -26,22 +26,27 @@
 </head>
 <body>
 <div class="container">
-    <h1>🍱 同事 Lunch 記帳 App</h1>
+    <h1>🍱 Lunch 記帳 App</h1>
     <div id="syncStatus" style="text-align:center; font-weight:bold; color:var(--danger-color); margin-bottom:15px;">🟢 準備連線...</div>
 
     <div class="card">
-        <h2>👥 同事名單</h2>
-        <input type="text" id="memberNameInput" placeholder="輸入同事姓名">
-        <button onclick="addMember()">新增同事</button>
+        <h2>👥 成員名單</h2>
+        <input type="text" id="memberNameInput" placeholder="輸入成員姓名">
+        <button onclick="addMember()">新增成員</button>
         <div id="memberTags" style="margin-top: 10px;"></div>
     </div>
 
     <div class="card">
         <h2>💸 記一筆洗費</h2>
+        <label>消費日期</label>
+        <input type="date" id="expenseDate">
+
         <label>項目名稱</label>
         <input type="text" id="expenseTitle" placeholder="例如: 下午茶 / 飲品">
+
         <label>總金額 (HK$)</label>
         <input type="number" id="expenseAmount" placeholder="0.00" oninput="autoSplitEvenly()">
+
         <label>邊個畀錢？</label>
         <select id="expensePayer"></select>
         
@@ -54,14 +59,14 @@
     <div class="card">
         <h2>📋 歷史明細</h2>
         <table>
-            <thead><tr><th>項目</th><th>總額</th><th>付款人</th><th>分擔詳情</th><th>操作</th></tr></thead>
-            <tbody id="expenseTableBody"><tr><td colspan="5" style="text-align:center; color:#64748b;">載入中...</td></tr></tbody>
+            <thead><tr><th>日期</th><th>項目</th><th>總額</th><th>付款人</th><th>分擔詳情</th><th>操作</th></tr></thead>
+            <tbody id="expenseTableBody"><tr><td colspan="6" style="text-align:center; color:#64748b;">載入中...</td></tr></tbody>
         </table>
     </div>
 
     <div class="card">
         <h2>⚖️ 結算建議</h2>
-        <div id="settlementResult"><p style="color:#64748b; text-align:center;">請先新增同事及消費</p></div>
+        <div id="settlementResult"><p style="color:#64748b; text-align:center;">請先新增成員及消費</p></div>
         <button class="danger" onclick="resetAllData()" style="margin-top:20px;">清空所有資料</button>
     </div>
 </div>
@@ -76,6 +81,12 @@
     let members = [];
     let expenses = [];
     let db = null;
+
+    // 網頁載入時，自動設定日期欄位為今日
+    window.addEventListener('DOMContentLoaded', () => {
+        const today = new Date().toISOString().split('T')[0];
+        document.getElementById('expenseDate').value = today;
+    });
 
     try {
         firebase.initializeApp(firebaseConfig);
@@ -101,7 +112,7 @@
         if (!db) return alert('資料庫尚未連線');
         const name = document.getElementById('memberNameInput').value.trim();
         if (!name) return alert('請輸入姓名');
-        if (members.includes(name)) return alert('同事已存在');
+        if (members.includes(name)) return alert('成員已存在');
         members.push(name);
         document.getElementById('memberNameInput').value = '';
         db.ref('lunchData/members').set(members);
@@ -113,15 +124,13 @@
         db.ref('lunchData/members').set(members);
     }
 
-    // 初始化或重新整理分擔名單（預設全選，但金額會根據勾選人數平均分）
     function initSplitInputs() {
         const container = document.getElementById('expenseSplitContainer');
         if (members.length === 0) {
-            container.innerHTML = '<p style="color:#64748b;">請先新增同事</p>';
+            container.innerHTML = '<p style="color:#64748b;">請先新增成員</p>';
             return;
         }
         
-        // 如果容器入面仲未有嘢，就建立預設全選狀態
         if (container.children.length !== members.length) {
             container.innerHTML = members.map(m => `
                 <div class="split-row">
@@ -133,7 +142,6 @@
         }
     }
 
-    // 當總金額改變或勾選狀態改變時，自動幫已勾選的人平分金額
     function autoSplitEvenly() {
         const total = parseFloat(document.getElementById('expenseAmount').value) || 0;
         const rows = document.querySelectorAll('.split-row');
@@ -151,19 +159,20 @@
                 input.disabled = false;
             } else {
                 input.value = "0.00";
-                input.disabled = true; // 冇份食嘅直接鎖死變 0
+                input.disabled = true;
             }
         });
     }
 
     function addExpense() {
         if (!db) return alert('資料庫尚未連線');
+        const date = document.getElementById('expenseDate').value;
         const title = document.getElementById('expenseTitle').value.trim();
         const totalAmount = parseFloat(document.getElementById('expenseAmount').value);
         const payer = document.getElementById('expensePayer').value;
 
-        if (!title || isNaN(totalAmount) || totalAmount <= 0 || !payer) {
-            return alert('請完整填寫項目名稱、總金額及付款人');
+        if (!date || !title || isNaN(totalAmount) || totalAmount <= 0 || !payer) {
+            return alert('請完整填寫日期、項目名稱、總金額及付款人');
         }
 
         let shares = {};
@@ -181,9 +190,13 @@
             return alert('最少要選擇一個分擔人');
         }
 
-        db.ref('lunchData/expenses').push({ title, totalAmount, payer, shares });
+        db.ref('lunchData/expenses').push({ date, title, totalAmount, payer, shares });
+        
+        // 重設表單
         document.getElementById('expenseTitle').value = '';
         document.getElementById('expenseAmount').value = '';
+        const today = new Date().toISOString().split('T')[0];
+        document.getElementById('expenseDate').value = today;
         initSplitInputs();
     }
 
@@ -198,13 +211,16 @@
     }
 
     function render() {
-        document.getElementById('memberTags').innerHTML = members.map(m => `<span class="tag">${m} <span onclick="removeMember('${m}')" style="cursor:pointer;color:red;font-weight:bold;">&times;</span></span>`).join('') || '未有同事';
-        document.getElementById('expensePayer').innerHTML = members.map(m => `<option value="${m}">${m}</option>`).join('') || '<option>請先加同事</option>';
+        document.getElementById('memberTags').innerHTML = members.map(m => `<span class="tag">${m} <span onclick="removeMember('${m}')" style="cursor:pointer;color:red;font-weight:bold;">&times;</span></span>`).join('') || '未有成員';
+        document.getElementById('expensePayer').innerHTML = members.map(m => `<option value="${m}">${m}</option>`).join('') || '<option>請先加成員</option>';
         
         initSplitInputs();
 
         const tbody = document.getElementById('expenseTableBody');
-        tbody.innerHTML = expenses.length ? expenses.map(e => {
+        // 按日期排序（最新的排在前面）
+        const sortedExpenses = [...expenses].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+
+        tbody.innerHTML = sortedExpenses.length ? sortedExpenses.map(e => {
             let shareText = '';
             if (e.shares) {
                 shareText = Object.keys(e.shares).map(m => `${m}: $${e.shares[m]}`).join(', ');
@@ -213,8 +229,9 @@
                 shareText = e.participants.map(p => `${p}: $${per}`).join(', ');
             }
             const displayTotal = e.totalAmount !== undefined ? e.totalAmount : e.amount;
-            return `<tr><td>${e.title}</td><td>HK$ ${Number(displayTotal).toFixed(2)}</td><td>${e.payer}</td><td><span style="font-size:0.9rem; color:#475569;">${shareText}</span></td><td><button onclick="deleteExpense('${e.id}')" style="padding:4px 8px;background:var(--danger-color);width:auto;">刪除</button></td></tr>`;
-        }).join('') : '<tr><td colspan="5" style="text-align:center;color:#64748b;">暫無紀錄</td></tr>';
+            const displayDate = e.date || '未有日期';
+            return `<tr><td>${displayDate}</td><td>${e.title}</td><td>HK$ ${Number(displayTotal).toFixed(2)}</td><td>${e.payer}</td><td><span style="font-size:0.9rem; color:#475569;">${shareText}</span></td><td><button onclick="deleteExpense('${e.id}')" style="padding:4px 8px;background:var(--danger-color);width:auto;">刪除</button></td></tr>`;
+        }).join('') : '<tr><td colspan="6" style="text-align:center;color:#64748b;">暫無紀錄</td></tr>';
 
         const container = document.getElementById('settlementResult');
         if (!members.length || !expenses.length) {
