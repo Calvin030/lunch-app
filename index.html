@@ -20,6 +20,8 @@
         th, td { padding: 10px; text-align: left; border-bottom: 1px solid var(--border-color); }
         th { background-color: #f1f5f9; }
         .tag { display: inline-block; background: #e2e8f0; padding: 4px 8px; border-radius: 4px; font-size: 0.85rem; margin: 2px; }
+        .split-row { display: flex; align-items: center; justify-content: space-between; margin-top: 8px; background: #f8fafc; padding: 8px; border-radius: 6px; }
+        .split-row input[type="number"] { width: 100px; margin-top: 0; }
     </style>
 </head>
 <body>
@@ -37,20 +39,22 @@
     <div class="card">
         <h2>💸 記一筆洗費</h2>
         <label>項目名稱</label>
-        <input type="text" id="expenseTitle" placeholder="例如: 譚仔午餐">
-        <label>金額 (HK$)</label>
-        <input type="number" id="expenseAmount" placeholder="0.00">
+        <input type="text" id="expenseTitle" placeholder="例如: 慶功大餐">
+        <label>總金額 (HK$)</label>
+        <input type="number" id="expenseAmount" placeholder="0.00" oninput="updateSplitInputs()">
         <label>邊個畀錢？</label>
         <select id="expensePayer"></select>
-        <label>參與分擔的人</label>
-        <div id="expenseParticipants" style="display:flex; flex-wrap:wrap; gap:10px; margin-top:5px;"></div>
+        
+        <label style="margin-top:15px; display:block;">各人分擔金額（可自由修改不平均金額）：</label>
+        <div id="expenseSplitContainer" style="margin-top:5px;"></div>
+        
         <button onclick="addExpense()">新增紀錄</button>
     </div>
 
     <div class="card">
         <h2>📋 歷史明細</h2>
         <table>
-            <thead><tr><th>項目</th><th>金額</th><th>付款人</th><th>參與者</th><th>操作</th></tr></thead>
+            <thead><tr><th>項目</th><th>總額</th><th>付款人</th><th>分擔詳情</th><th>操作</th></tr></thead>
             <tbody id="expenseTableBody"><tr><td colspan="5" style="text-align:center; color:#64748b;">載入中...</td></tr></tbody>
         </table>
     </div>
@@ -63,7 +67,6 @@
 </div>
 
 <script>
-    // 使用正確地區的 databaseURL
     const firebaseConfig = {
         apiKey: "AIzaSyAiV1kXzUjpYAhgYE6ON4GdH135cdgZ6oM",
         projectId: "lunch-app-81237",
@@ -110,20 +113,57 @@
         db.ref('lunchData/members').set(members);
     }
 
+    function updateSplitInputs() {
+        const total = parseFloat(document.getElementById('expenseAmount').value) || 0;
+        const container = document.getElementById('expenseSplitContainer');
+        if (members.length === 0) {
+            container.innerHTML = '<p style="color:#64748b;">請先新增同事</p>';
+            return;
+        }
+        const share = members.length > 0 ? (total / members.length).toFixed(2) : 0;
+        container.innerHTML = members.map(m => `
+            <div class="split-row">
+                <label><input type="checkbox" class="split-check" value="${m}" checked onchange="recalcSplit()"> ${m}</label>
+                <input type="number" class="split-amount" data-member="${m}" value="${share}" step="0.1">
+            </div>
+        `).join('');
+    }
+
+    function recalcSplit() {
+        // 當勾選改變時，可以自動幫未勾選的歸零，或重新平均分佈（保持簡單讓用戶自由發揮）
+    }
+
     function addExpense() {
         if (!db) return alert('資料庫尚未連線');
         const title = document.getElementById('expenseTitle').value.trim();
-        const amount = parseFloat(document.getElementById('expenseAmount').value);
+        const totalAmount = parseFloat(document.getElementById('expenseAmount').value);
         const payer = document.getElementById('expensePayer').value;
-        const participants = Array.from(document.querySelectorAll('input[name="participant"]:checked')).map(cb => cb.value);
 
-        if (!title || isNaN(amount) || amount <= 0 || !payer || participants.length === 0) {
-            return alert('請完整填寫資料及選擇參與者');
+        if (!title || isNaN(totalAmount) || totalAmount <= 0 || !payer) {
+            return alert('請完整填寫項目名稱、總金額及付款人');
         }
 
-        db.ref('lunchData/expenses').push({ title, amount, payer, participants });
+        let shares = {};
+        let sum = 0;
+        const rows = document.querySelectorAll('.split-row');
+        rows.forEach(row => {
+            const cb = row.querySelector('.split-check');
+            const input = row.querySelector('.split-amount');
+            if (cb.checked) {
+                const val = parseFloat(input.value) || 0;
+                shares[cb.value] = val;
+                sum += val;
+            }
+        });
+
+        if (Object.keys(shares).length === 0) {
+            return alert('最少要選擇一個分擔人');
+        }
+
+        db.ref('lunchData/expenses').push({ title, totalAmount, payer, shares });
         document.getElementById('expenseTitle').value = '';
         document.getElementById('expenseAmount').value = '';
+        updateSplitInputs();
     }
 
     function deleteExpense(id) {
@@ -139,10 +179,22 @@
     function render() {
         document.getElementById('memberTags').innerHTML = members.map(m => `<span class="tag">${m} <span onclick="removeMember('${m}')" style="cursor:pointer;color:red;font-weight:bold;">&times;</span></span>`).join('') || '未有同事';
         document.getElementById('expensePayer').innerHTML = members.map(m => `<option value="${m}">${m}</option>`).join('') || '<option>請先加同事</option>';
-        document.getElementById('expenseParticipants').innerHTML = members.map(m => `<label><input type="checkbox" name="participant" value="${m}" checked> ${m}</label>`).join('') || '請先加同事';
         
+        updateSplitInputs();
+
         const tbody = document.getElementById('expenseTableBody');
-        tbody.innerHTML = expenses.length ? expenses.map(e => `<tr><td>${e.title}</td><td>HK$ ${Number(e.amount).toFixed(2)}</td><td>${e.payer}</td><td>${e.participants ? e.participants.join(', ') : ''}</td><td><button onclick="deleteExpense('${e.id}')" style="padding:4px 8px;background:var(--danger-color);width:auto;">刪除</button></td></tr>`).join('') : '<tr><td colspan="5" style="text-align:center;color:#64748b;">暫無紀錄</td></tr>';
+        tbody.innerHTML = expenses.length ? expenses.map(e => {
+            let shareText = '';
+            if (e.shares) {
+                shareText = Object.keys(e.shares).map(m => `${m}: $${e.shares[m]}`).join(', ');
+            } else if (e.participants && e.amount) {
+                // 相容舊資料
+                let per = (e.amount / e.participants.length).toFixed(1);
+                shareText = e.participants.map(p => `${p}: $${per}`).join(', ');
+            }
+            const displayTotal = e.totalAmount !== undefined ? e.totalAmount : e.amount;
+            return `<tr><td>${e.title}</td><td>HK$ ${Number(displayTotal).toFixed(2)}</td><td>${e.payer}</td><td><span style="font-size:0.9rem; color:#475569;">${shareText}</span></td><td><button onclick="deleteExpense('${e.id}')" style="padding:4px 8px;background:var(--danger-color);width:auto;">刪除</button></td></tr>`;
+        }).join('') : '<tr><td colspan="5" style="text-align:center;color:#64748b;">暫無紀錄</td></tr>';
 
         const container = document.getElementById('settlementResult');
         if (!members.length || !expenses.length) {
@@ -152,11 +204,19 @@
 
         let balances = {};
         members.forEach(m => balances[m] = 0);
+        
         expenses.forEach(e => {
-            if (!e.participants) return;
-            balances[e.payer] += Number(e.amount);
-            const share = Number(e.amount) / e.participants.length;
-            e.participants.forEach(p => { if (balances[p] !== undefined) balances[p] -= share; });
+            const total = e.totalAmount !== undefined ? Number(e.totalAmount) : Number(e.amount);
+            balances[e.payer] += total;
+
+            if (e.shares) {
+                for (let m in e.shares) {
+                    if (balances[m] !== undefined) balances[m] -= Number(e.shares[m]);
+                }
+            } else if (e.participants) {
+                const share = total / e.participants.length;
+                e.participants.forEach(p => { if (balances[p] !== undefined) balances[p] -= share; });
+            }
         });
 
         let debtors = [], creditors = [];
