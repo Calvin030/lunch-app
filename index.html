@@ -2,105 +2,291 @@
 <html lang="zh-HK">
 <head>
     <meta charset="UTF-8">
-    <title>專業版 Lunch 記帳 App</title>
+    <title>Lunch 記帳 App - 雲端版</title>
+    <!-- Firebase CDN -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/10.8.0/firebase-app-compat.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/10.8.0/firebase-database-compat.min.js"></script>
     <style>
-        body { font-family: sans-serif; background: #f4f7f6; padding: 20px; }
+        body { font-family: sans-serif; background: #f0f2f5; padding: 20px; color: #333; }
         .container { max-width: 600px; margin: auto; }
-        .card { background: #fff; padding: 20px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); margin-bottom: 20px; }
-        .btn { padding: 10px; border: none; border-radius: 5px; cursor: pointer; color: white; background: #2563eb; width: 100%; margin-top: 10px; }
-        .tag { display: inline-block; background: #e2e8f0; padding: 5px 10px; border-radius: 5px; margin: 3px; cursor: pointer; }
-        .row { display: flex; justify-content: space-between; align-items: center; padding: 8px; border-bottom: 1px solid #eee; }
+        .card { background: #fff; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        .row { display: flex; align-items: center; justify-content: space-between; margin: 8px 0; background: #f8f9fa; padding: 8px; border-radius: 6px; }
+        input, select, button { padding: 8px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
+        button { background: #007bff; color: white; cursor: pointer; border: none; font-weight: bold; }
+        button.danger { background: #dc3545; }
+        .tag { display: inline-block; background: #e2e8f0; padding: 5px 10px; border-radius: 5px; margin: 3px; font-size: 0.9rem; }
     </style>
 </head>
 <body>
-<div class="container">
-    <h1>🍱 Lunch 記帳 App</h1>
-    
-    <!-- 成員區 -->
-    <div class="card">
-        <h3>👥 成員名單</h3>
-        <input type="text" id="mName" placeholder="輸入名字">
-        <button class="btn" onclick="addMember()">加入成員</button>
-        <div id="mTags" style="margin-top:10px;"></div>
-    </div>
-
-    <!-- 記帳區 -->
-    <div class="card">
-        <h3>💸 記一筆洗費</h3>
-        <input type="text" id="eTitle" placeholder="項目名稱 (例如: 大家樂)">
-        <select id="mode" onchange="toggleMode()">
-            <option value="custom">按個人金額計算</option>
-            <option value="equal">全單平分 (AA制)</option>
-        </select>
+    <div class="container">
+        <h2>🍱 Lunch 記帳 App (雲端同步)</h2>
+        <div id="syncStatus" style="font-size: 0.85rem; color: #666; margin-bottom: 10px;">🔄 連線中...</div>
         
-        <div id="extraFields">
-            <input type="number" id="fee" placeholder="運費 (+)">
-            <select id="svc"><option value="0">無加一</option><option value="0.1">加一 (10%)</option></select>
-            <input type="number" id="dis" placeholder="折扣 (輸入金額或百分比)">
+        <!-- 1. 成員管理 -->
+        <div class="card">
+            <h3>👥 成員管理</h3>
+            <div style="display: flex; gap: 5px;">
+                <input type="text" id="mName" placeholder="成員姓名" style="flex:1;">
+                <button onclick="addMember()">加人</button>
+            </div>
+            <div id="mList" style="margin-top:10px;"></div>
         </div>
-        <input type="number" id="total" placeholder="總金額" style="display:none;">
-        
-        <div id="memberInputs" style="margin:10px 0;"></div>
-        <select id="payer"></select>
-        <button class="btn" onclick="addExpense()">確認新增</button>
+
+        <!-- 2. 記帳與計算 -->
+        <div class="card">
+            <h3>💸 記一筆洗費</h3>
+            <input type="text" id="eTitle" placeholder="項目名稱 (例如: 餐廳堂食)" style="width:100%; margin-bottom: 10px;">
+            
+            <label style="font-size: 0.9rem; font-weight: bold;">分帳模式：</label>
+            <select id="mode" onchange="renderInputs()" style="width:100%; margin-bottom: 10px;">
+                <option value="custom">按原價比例 (包運費 / 加一 / 折扣)</option>
+                <option value="equal">全單平分 (AA制)</option>
+            </select>
+
+            <div id="inputs" style="margin-bottom: 10px;"></div>
+
+            <label style="font-size: 0.9rem; font-weight: bold;">邊個畀錢？</label>
+            <select id="payer" style="width:100%; margin-bottom: 10px;"></select>
+
+            <button onclick="addExpense()" style="width:100%;">確認新增紀錄</button>
+        </div>
+
+        <!-- 3. 歷史與結算 -->
+        <div class="card">
+            <h3>📋 歷史紀錄與結算</h3>
+            <div id="history"></div>
+            <div id="settlement" style="margin-top: 15px; border-top: 1px solid #eee; padding-top: 10px;"></div>
+            <button class="danger" onclick="resetAllData()" style="width:100%; margin-top:20px;">清空所有雲端數據</button>
+        </div>
     </div>
 
-    <!-- 結果區 -->
-    <div class="card" id="history"><h3>📋 歷史紀錄</h3></div>
-</div>
+    <script>
+        // Firebase 設定 (使用你一直以來果個 project)
+        const firebaseConfig = {
+            apiKey: "AIzaSyAiV1kXzUjpYAhgYE6ON4GdH135cdgZ6oM",
+            projectId: "lunch-app-81237",
+            databaseURL: "https://lunch-app-81237-default-rtdb.asia-southeast1.firebasedatabase.app"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
 
-<script>
-    // Firebase 設定
-    const config = { apiKey: "AIzaSyAiV1kXzUjpYAhgYE6ON4GdH135cdgZ6oM", projectId: "lunch-app-81237", databaseURL: "https://lunch-app-81237-default-rtdb.asia-southeast1.firebasedatabase.app" };
-    firebase.initializeApp(config);
-    const db = firebase.database();
-    
-    let members = [], expenses = [];
+        let members = [];
+        let expenses = [];
 
-    // 初始化與監聽
-    db.ref('lunchData').on('value', s => {
-        const d = s.val() || {};
-        members = d.members || [];
-        expenses = d.expenses ? Object.values(d.expenses) : [];
-        render();
-    });
+        // 即時監聽 Firebase 數據，確保唔會唔見資料，亦可以即時同步
+        db.ref('lunchData').on('value', (snapshot) => {
+            const data = snapshot.val() || {};
+            members = data.members || [];
+            expenses = data.expenses ? Object.keys(data.expenses).map(k => ({ id: k, ...data.expenses[k] })) : [];
+            
+            document.getElementById('syncStatus.innerText' || 'syncStatus').innerText = '🟢 雲端連線成功 (數據已同步)';
+            render();
+        }, (error) => {
+            document.getElementById('syncStatus').innerText = '🔴 連線失敗: ' + error.message;
+        });
 
-    function addMember() {
-        let n = document.getElementById('mName').value.trim();
-        if(n && !members.includes(n)) {
+        function addMember() {
+            let n = document.getElementById('mName').value.trim();
+            if(!n) return alert('請輸入姓名');
+            if(members.includes(n)) return alert('成員已存在');
+            
             members.push(n);
             db.ref('lunchData/members').set(members);
             document.getElementById('mName').value = '';
         }
-    }
 
-    function toggleMode() {
-        let mode = document.getElementById('mode').value;
-        document.getElementById('extraFields').style.display = mode === 'custom' ? 'block' : 'none';
-        document.getElementById('total').style.display = mode === 'equal' ? 'block' : 'none';
-    }
+        function removeMember(name) {
+            members = members.filter(m => m !== name);
+            db.ref('lunchData/members').set(members);
+        }
 
-    function render() {
-        document.getElementById('mTags').innerHTML = members.map(m => `<span class="tag">${m}</span>`).join('');
-        document.getElementById('payer').innerHTML = members.map(m => `<option>${m}</option>`).join('');
-        
-        // 渲染每個成員的輸入欄位
-        let mode = document.getElementById('mode').value;
-        document.getElementById('memberInputs').innerHTML = members.map(m => `
-            <div class="row">
-                <span>${m}</span>
-                <input type="number" class="amt" value="${mode==='equal'?'':'0'}">
-            </div>
-        `).join('');
-    }
+        function renderInputs() {
+            let mode = document.getElementById('mode').value;
+            let html = '';
+            
+            if (mode === 'custom') {
+                html += `
+                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:5px; margin-bottom:8px;">
+                        <input type="number" id="fee" placeholder="運費 (+)" oninput="calcPreview()">
+                        <select id="svc" onchange="calcPreview()">
+                            <option value="0">無加一</option>
+                            <option value="0.1">加一 (10%)</option>
+                        </select>
+                    </div>
+                    <input type="number" id="dis" placeholder="折扣金額 ($)" style="width:100%; margin-bottom:8px;" oninput="calcPreview()">
+                `;
+            } else {
+                html += `<input type="number" id="total" placeholder="總消費金額 ($)" style="width:100%; margin-bottom:8px;" oninput="calcPreview()">`;
+            }
+            
+            if (members.length === 0) {
+                html += `<p style="color:#666; font-size:0.9rem;">請先在上方新增成員</p>`;
+            } else {
+                members.forEach(m => {
+                    html += `<div class="row"><span>${m}</span><input type="number" class="amt" value="${mode==='equal'?'':'0'}" placeholder="${mode==='equal'?'參與':'原價'}" oninput="calcPreview()" style="width:100px;"></div>`;
+                });
+            }
+            
+            document.getElementById('inputs').innerHTML = html;
+            
+            // 更新畀錢人選單
+            document.getElementById('payer').innerHTML = members.map(m => `<option value="${m}">${m}</option>`).join('') || '<option>請先加成員</option>';
+            calcPreview();
+        }
 
-    function addExpense() {
-        // 這裏是核心計算邏輯，你會發現代碼開始變長是因為處理了各種邊緣情況
-        alert("資料已儲存到雲端！");
-        // 這裡會處理你的「加一」、「折扣」比例，寫入 Firebase
-    }
-</script>
+        function calcPreview() {
+            // 實時預覽總額
+            let mode = document.getElementById('mode').value;
+            let finalTotal = 0;
+            if(mode === 'equal') {
+                finalTotal = parseFloat(document.getElementById('total')?.value) || 0;
+            } else {
+                let bases = Array.from(document.querySelectorAll('.amt')).map(i => parseFloat(i.value) || 0);
+                let totalBase = bases.reduce((a,b) => a+b, 0);
+                let fee = parseFloat(document.getElementById('fee')?.value) || 0;
+                let svc = document.getElementById('svc')?.value == '0.1' ? 1.1 : 1.0;
+                let dis = parseFloat(document.getElementById('dis')?.value) || 0;
+                let serviceTotal = totalBase * (svc - 1);
+                finalTotal = totalBase + serviceTotal + fee - dis;
+            }
+            // 可以在適當地方顯示預覽，確保計數無錯
+        }
+
+        function addExpense() {
+            let title = document.getElementById('eTitle').value.trim() || '午餐';
+            let mode = document.getElementById('mode').value;
+            let payer = document.getElementById('payer').value;
+            
+            if(members.length === 0) return alert('請先新增成員');
+            
+            let expenseData = { title, mode, payer, timestamp: Date.now() };
+            let shares = {};
+
+            if(mode === 'equal') {
+                let total = parseFloat(document.getElementById('total').value);
+                if(isNaN(total) || total <= 0) return alert('請輸入有效總金額');
+                let each = Math.round((total / members.length) * 100) / 100;
+                members.forEach(m => shares[m] = each);
+                expenseData.finalTotal = total;
+                expenseData.shares = shares;
+            } else {
+                let fee = parseFloat(document.getElementById('fee').value) || 0;
+                let svc = document.getElementById('svc').value == '0.1' ? 1.1 : 1.0;
+                let dis = parseFloat(document.getElementById('dis').value) || 0;
+                
+                let amtInputs = document.querySelectorAll('.amt');
+                let bases = [];
+                let totalBase = 0;
+                
+                amtInputs.forEach((input, i) => {
+                    let val = parseFloat(input.value) || 0;
+                    bases.push({ name: members[i], val });
+                    totalBase += val;
+                });
+
+                if(totalBase <= 0) return alert('請輸入大於0的原價');
+
+                let serviceTotal = totalBase * (svc - 1);
+                let finalTotal = totalBase + serviceTotal + fee - dis;
+                if(finalTotal < 0) finalTotal = 0;
+
+                bases.forEach(b => {
+                    if(b.val > 0) {
+                        let proportion = b.val / totalBase;
+                        let personShare = (b.val * svc) + (fee * proportion) - (dis * proportion);
+                        shares[b.name] = Math.round(personShare * 100) / 100;
+                    }
+                });
+
+                expenseData.baseTotal = totalBase;
+                expenseData.finalTotal = Math.round(finalTotal * 100) / 100;
+                expenseData.shares = shares;
+            }
+
+            // 寫入 Firebase
+            db.ref('lunchData/expenses').push(expenseData);
+            document.getElementById('eTitle').value = '';
+            alert('成功新增洗費到雲端！');
+        }
+
+        function deleteExpense(id) {
+            db.ref(`lunchData/expenses/${id}`).remove();
+        }
+
+        function resetAllData() {
+            if(confirm('確定要清空雲端所有成員同紀錄？')) {
+                db.ref('lunchData').remove();
+            }
+        }
+
+        function render() {
+            // 渲染成員標籤
+            document.getElementById('mList').innerHTML = members.map(m => `
+                <span class="tag">${m} <span onclick="removeMember('${m}')" style="cursor:pointer; color:red; font-weight:bold;">&times;</span></span>
+            `).join('') || '<span style="color:#666; font-size:0.9rem;">暫無成員</span>';
+
+            renderInputs();
+
+            // 渲染歷史紀錄
+            let historyHtml = '<h4>歷史明細</h4>';
+            if(expenses.length === 0) {
+                historyHtml += '<p style="color:#666; font-size:0.9rem;">暫無洗費紀錄</p>';
+            } else {
+                expenses.forEach(e => {
+                    let shareStr = e.shares ? Object.keys(e.shares).map(m => `${m}: $${e.shares[m]}`).join(', ') : '';
+                    historyHtml += `
+                        <div class="row" style="display:block; margin-bottom:8px;">
+                            <div style="display:flex; justify-content:space-between; font-weight:bold;">
+                                <span>${e.title} ($${e.finalTotal || 0})</span>
+                                <button onclick="deleteExpense('${e.id}')" style="background:#dc3545; padding:2px 6px; font-size:0.8rem;">刪除</button>
+                            </div>
+                            <div style="font-size:0.85rem; color:#666;">付款人: ${e.payer} | 分攤: ${shareStr}</div>
+                        </div>
+                    `;
+                });
+            }
+            document.getElementById('history').innerHTML = historyHtml;
+
+            // 計算最終結算建議 (Debt Simplification)
+            let balances = {};
+            members.forEach(m => balances[m] = 0);
+
+            expenses.forEach(e => {
+                if(e.payer && balances[e.payer] !== undefined) {
+                    balances[e.payer] += Number(e.finalTotal || 0);
+                }
+                if(e.shares) {
+                    for(let m in e.shares) {
+                        if(balances[m] !== undefined) {
+                            balances[m] -= Number(e.shares[m]);
+                        }
+                    }
+                }
+            });
+
+            let settleHtml = '<h4>⚖️ 結算建議 (誰要過數給誰)</h4>';
+            let debtors = [], creditors = [];
+            for(let m in balances) {
+                let b = Math.round(balances[m] * 100) / 100;
+                settleHtml += `<div style="font-size:0.9rem;">${m}: <b style="color:${b>0?'green':(b<0?'red':'black')}">${b>=0?'+':''}${b.toFixed(2)}</b></div>`;
+                if(b < -0.01) debtors.push({ name: m, amount: -b });
+                else if(b > 0.01) creditors.push({ name: m, amount: b });
+            }
+
+            let trans = [];
+            let i = 0, j = 0;
+            while(i < debtors.length && j < creditors.length) {
+                let d = debtors[i], c = creditors[j];
+                let amt = Math.min(d.amount, c.amount);
+                trans.push(`👉 <b>${d.name}</b> 要過數 <b>$${amt.toFixed(2)}</b> 比 <b>${c.name}</b>`);
+                d.amount -= amt; c.amount -= amt;
+                if(d.amount < 0.01) i++;
+                if(c.amount < 0.01) j++;
+            }
+
+            settleHtml += '<div style="margin-top:8px; font-size:0.95rem;">' + (trans.length ? trans.join('<br>') : '<span style="color:green;">大家已找清，互不欠債！</span>') + '</div>';
+            document.getElementById('settlement').innerHTML = settleHtml;
+        }
+    </script>
 </body>
 </html>
