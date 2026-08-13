@@ -20,8 +20,9 @@
         th, td { padding: 10px; text-align: left; border-bottom: 1px solid var(--border-color); }
         th { background-color: #f1f5f9; }
         .tag { display: inline-block; background: #e2e8f0; padding: 4px 8px; border-radius: 4px; font-size: 0.85rem; margin: 2px; }
-        .split-row { display: flex; align-items: center; justify-content: space-between; margin-top: 8px; background: #f8fafc; padding: 8px; border-radius: 6px; }
+        .split-row { display: flex; align-items: center; justify-content: space-between; margin-top: 8px; background: #f8fafc; padding: 8px 12px; border-radius: 6px; }
         .split-row input[type="number"] { width: 100px; margin-top: 0; }
+        .split-row label { display: flex; align-items: center; gap: 8px; cursor: pointer; width: 100%; justify-content: space-between; }
         .row-group { display: flex; gap: 10px; }
         .row-group > div { flex: 1; }
     </style>
@@ -92,11 +93,11 @@
         <label style="margin-top:15px; display:block;" id="splitListLabel">各人叫咗幾多錢（原價）：</label>
         <div id="expenseSplitContainer" style="margin-top:5px;"></div>
 
-        <div style="background: #eff6ff; padding: 10px; border-radius: 6px; margin-top: 10px; font-weight: bold; color: var(--primary-color); display: flex; justify-content: space-between; flex-wrap: wrap; gap: 5px;">
+        <div style="background: #eff6ff; padding: 10px; border-radius: 6px; margin-top: 10px; font-weight: bold; color: var(--primary-color); display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
             <span id="summaryBaseBox">原價總計: HK$ <span id="displayBaseTotal">0.00</span></span>
             <span id="summaryServiceBox">加一總計: HK$ <span id="displayServiceTotal">0.00</span></span>
             <span id="summaryDiscountBox">折扣省埋: HK$ <span id="displayDiscountAmount">0.00</span></span>
-            <span>實付總金額: HK$ <span id="finalDisplayAmount">0.00</span></span>
+            <span style="width: 100%; border-top: 1px dashed #bfdbfe; padding-top: 5px; text-align: right;">實付總金額: HK$ <span id="finalDisplayAmount">0.00</span></span>
         </div>
         
         <button onclick="addExpense()">新增紀錄</button>
@@ -207,7 +208,10 @@
         
         container.innerHTML = members.map(m => `
             <div class="split-row">
-                <label><input type="checkbox" class="split-check" value="${m}" checked onchange="autoRecalc()"> ${m}</label>
+                <label>
+                    <span>${m}</span>
+                    <input type="checkbox" class="split-check" value="${m}" checked onchange="autoRecalc()" style="width: auto; margin: 0; transform: scale(1.2);">
+                </label>
                 ${mode === 'custom' ? '<input type="number" class="split-amount" data-member="' + m + '" value="0.00" step="0.1" placeholder="原價" oninput="autoRecalc()">' : ''}
             </div>
         `).join('');
@@ -233,12 +237,14 @@
             rows.forEach(row => {
                 const cb = row.querySelector('.split-check');
                 const input = row.querySelector('.split-amount');
-                if (cb && input) {
+                if (cb) {
                     if (cb.checked) {
-                        baseTotal += parseFloat(input.value) || 0;
-                        input.disabled = false;
+                        if (input) {
+                            baseTotal += parseFloat(input.value) || 0;
+                            input.disabled = false;
+                        }
                     } else {
-                        input.disabled = true;
+                        if (input) input.disabled = true;
                     }
                 }
             });
