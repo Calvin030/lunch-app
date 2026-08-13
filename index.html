@@ -3,7 +3,6 @@
 <head>
     <meta charset="UTF-8">
     <title>Lunch 記帳 App - 雲端版</title>
-    <!-- Firebase CDN -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/10.8.0/firebase-app-compat.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/10.8.0/firebase-database-compat.min.js"></script>
     <style>
@@ -61,7 +60,6 @@
     </div>
 
     <script>
-        // Firebase 設定 (使用你一直以來果個 project)
         const firebaseConfig = {
             apiKey: "AIzaSyAiV1kXzUjpYAhgYE6ON4GdH135cdgZ6oM",
             projectId: "lunch-app-81237",
@@ -73,16 +71,17 @@
         let members = [];
         let expenses = [];
 
-        // 即時監聽 Firebase 數據，確保唔會唔見資料，亦可以即時同步
         db.ref('lunchData').on('value', (snapshot) => {
             const data = snapshot.val() || {};
             members = data.members || [];
             expenses = data.expenses ? Object.keys(data.expenses).map(k => ({ id: k, ...data.expenses[k] })) : [];
             
-            document.getElementById('syncStatus.innerText' || 'syncStatus').innerText = '🟢 雲端連線成功 (數據已同步)';
+            const syncEl = document.getElementById('syncStatus');
+            if(syncEl) syncEl.innerText = '🟢 雲端連線成功 (數據已同步)';
             render();
         }, (error) => {
-            document.getElementById('syncStatus').innerText = '🔴 連線失敗: ' + error.message;
+            const syncEl = document.getElementById('syncStatus');
+            if(syncEl) syncEl.innerText = '🔴 連線失敗: ' + error.message;
         });
 
         function addMember() {
@@ -107,49 +106,28 @@
             if (mode === 'custom') {
                 html += `
                     <div style="display:grid; grid-template-columns: 1fr 1fr; gap:5px; margin-bottom:8px;">
-                        <input type="number" id="fee" placeholder="運費 (+)" oninput="calcPreview()">
-                        <select id="svc" onchange="calcPreview()">
+                        <input type="number" id="fee" placeholder="運費 (+)">
+                        <select id="svc">
                             <option value="0">無加一</option>
                             <option value="0.1">加一 (10%)</option>
                         </select>
                     </div>
-                    <input type="number" id="dis" placeholder="折扣金額 ($)" style="width:100%; margin-bottom:8px;" oninput="calcPreview()">
+                    <input type="number" id="dis" placeholder="折扣金額 ($)" style="width:100%; margin-bottom:8px;">
                 `;
             } else {
-                html += `<input type="number" id="total" placeholder="總消費金額 ($)" style="width:100%; margin-bottom:8px;" oninput="calcPreview()">`;
+                html += `<input type="number" id="total" placeholder="總消費金額 ($)" style="width:100%; margin-bottom:8px;">`;
             }
             
             if (members.length === 0) {
                 html += `<p style="color:#666; font-size:0.9rem;">請先在上方新增成員</p>`;
             } else {
                 members.forEach(m => {
-                    html += `<div class="row"><span>${m}</span><input type="number" class="amt" value="${mode==='equal'?'':'0'}" placeholder="${mode==='equal'?'參與':'原價'}" oninput="calcPreview()" style="width:100px;"></div>`;
+                    html += `<div class="row"><span>${m}</span><input type="number" class="amt" value="${mode==='equal'?'':'0'}" placeholder="${mode==='equal'?'參與':'原價'}" style="width:100px;"></div>`;
                 });
             }
             
             document.getElementById('inputs').innerHTML = html;
-            
-            // 更新畀錢人選單
             document.getElementById('payer').innerHTML = members.map(m => `<option value="${m}">${m}</option>`).join('') || '<option>請先加成員</option>';
-            calcPreview();
-        }
-
-        function calcPreview() {
-            // 實時預覽總額
-            let mode = document.getElementById('mode').value;
-            let finalTotal = 0;
-            if(mode === 'equal') {
-                finalTotal = parseFloat(document.getElementById('total')?.value) || 0;
-            } else {
-                let bases = Array.from(document.querySelectorAll('.amt')).map(i => parseFloat(i.value) || 0);
-                let totalBase = bases.reduce((a,b) => a+b, 0);
-                let fee = parseFloat(document.getElementById('fee')?.value) || 0;
-                let svc = document.getElementById('svc')?.value == '0.1' ? 1.1 : 1.0;
-                let dis = parseFloat(document.getElementById('dis')?.value) || 0;
-                let serviceTotal = totalBase * (svc - 1);
-                finalTotal = totalBase + serviceTotal + fee - dis;
-            }
-            // 可以在適當地方顯示預覽，確保計數無錯
         }
 
         function addExpense() {
@@ -203,7 +181,6 @@
                 expenseData.shares = shares;
             }
 
-            // 寫入 Firebase
             db.ref('lunchData/expenses').push(expenseData);
             document.getElementById('eTitle').value = '';
             alert('成功新增洗費到雲端！');
@@ -220,14 +197,12 @@
         }
 
         function render() {
-            // 渲染成員標籤
             document.getElementById('mList').innerHTML = members.map(m => `
                 <span class="tag">${m} <span onclick="removeMember('${m}')" style="cursor:pointer; color:red; font-weight:bold;">&times;</span></span>
             `).join('') || '<span style="color:#666; font-size:0.9rem;">暫無成員</span>';
 
             renderInputs();
 
-            // 渲染歷史紀錄
             let historyHtml = '<h4>歷史明細</h4>';
             if(expenses.length === 0) {
                 historyHtml += '<p style="color:#666; font-size:0.9rem;">暫無洗費紀錄</p>';
@@ -247,7 +222,6 @@
             }
             document.getElementById('history').innerHTML = historyHtml;
 
-            // 計算最終結算建議 (Debt Simplification)
             let balances = {};
             members.forEach(m => balances[m] = 0);
 
