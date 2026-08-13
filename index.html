@@ -8,113 +8,101 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/10.8.0/firebase-database-compat.min.js"></script>
     <style>
         :root { --primary-color: #2563eb; --bg-color: #f8fafc; --card-bg: #ffffff; --text-color: #1e293b; --border-color: #e2e8f0; --danger-color: #ef4444; --success-color: #10b981; }
-        body { font-family: sans-serif; background-color: var(--bg-color); color: var(--text-color); margin: 0; padding: 20px; }
+        body { font-family: sans-serif; background-color: var(--bg-color); padding: 20px; }
         .container { max-width: 800px; margin: 0 auto; }
-        h1 { text-align: center; color: var(--primary-color); }
-        .card { background: var(--card-bg); border-radius: 12px; padding: 20px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); margin-bottom: 20px; }
-        input, select, button { width: 100%; padding: 10px; border: 1px solid var(--border-color); border-radius: 6px; box-sizing: border-box; font-size: 1rem; margin-top: 5px; }
-        button { background-color: var(--primary-color); color: white; border: none; font-weight: bold; cursor: pointer; margin-top: 8px; }
-        button.danger { background-color: var(--danger-color); }
-        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-        th, td { padding: 10px; text-align: left; border-bottom: 1px solid var(--border-color); }
-        th { background-color: #f1f5f9; }
-        .tag { display: inline-block; background: #e2e8f0; padding: 4px 8px; border-radius: 4px; font-size: 0.85rem; margin: 2px; }
-        .split-row { display: flex; align-items: center; justify-content: space-between; margin-top: 8px; background: #f8fafc; padding: 8px; border-radius: 6px; }
-        .split-row input[type="number"] { width: 100px; margin-top: 0; }
-        .row-group { display: flex; gap: 10px; }
-        .row-group > div { flex: 1; }
+        .card { background: var(--card-bg); border-radius: 12px; padding: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        input, select, button { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; margin-top: 5px; }
+        button { background: var(--primary-color); color: white; border: none; font-weight: bold; cursor: pointer; }
+        .tag { display: inline-block; background: #e2e8f0; padding: 5px 10px; border-radius: 5px; margin: 3px; }
+        .split-row { display: flex; align-items: center; justify-content: space-between; margin-top: 5px; background: #f1f5f9; padding: 8px; border-radius: 5px; }
     </style>
 </head>
 <body>
 <div class="container">
     <h1>🍱 Lunch 記帳 App</h1>
 
+    <!-- 1. 成員管理 -->
+    <div class="card">
+        <h2>👥 成員管理</h2>
+        <input type="text" id="memberNameInput" placeholder="輸入姓名">
+        <button onclick="addMember()">新增成員</button>
+        <div id="memberTags" style="margin-top: 10px;"></div>
+    </div>
+
+    <!-- 2. 記帳區 -->
     <div class="card">
         <h2>💸 記一筆洗費</h2>
-        <label>項目名稱</label>
-        <input type="text" id="expenseTitle" placeholder="例如: 餐廳午餐">
-        
-        <label style="margin-top:10px;">分帳模式</label>
-        <select id="splitMode" onchange="toggleSplitMode()">
-            <option value="custom">按原價/自訂金額</option>
+        <input type="text" id="expenseTitle" placeholder="項目名稱">
+        <select id="splitMode" onchange="initSplitInputs()">
+            <option value="custom">按原價分攤</option>
             <option value="equal">全單平分 (AA制)</option>
         </select>
-
-        <div id="customCostSection">
-            <div class="row-group" style="margin-top:10px;">
-                <div>
-                    <label>平台費/運費 (+)</label>
-                    <input type="number" id="expenseFee" value="0" oninput="autoRecalc()">
-                </div>
-                <div>
-                    <label>加一服務費 (10%)</label>
-                    <select id="serviceCharge" onchange="autoRecalc()">
-                        <option value="0">無加一</option>
-                        <option value="0.1">有加一 (10%)</option>
-                    </select>
-                </div>
-            </div>
-            <div class="row-group" style="margin-top:10px;">
-                <div>
-                    <label>折扣類型</label>
-                    <select id="discountType" onchange="autoRecalc()">
-                        <option value="percent">百分比 (%)</option>
-                        <option value="fixed">固定金額 ($)</option>
-                    </select>
-                </div>
-                <div>
-                    <label>折扣數值</label>
-                    <input type="number" id="expenseDiscount" value="0" oninput="autoRecalc()">
-                </div>
-            </div>
-        </div>
-
-        <div id="equalAmountSection" style="display:none; margin-top:10px;">
-            <label>總消費金額 (HK$)</label>
-            <input type="number" id="equalTotalAmount" value="0" oninput="autoRecalc()">
-        </div>
-
-        <label style="margin-top:15px;">邊個畀錢？</label>
-        <select id="expensePayer"></select>
         
-        <label style="margin-top:15px; display:block;" id="splitListLabel">各人原價：</label>
-        <div id="expenseSplitContainer" style="margin-top:5px;"></div>
-
-        <div style="background: #eff6ff; padding: 10px; border-radius: 6px; margin-top: 10px; font-weight: bold; color: var(--primary-color);">
-            <span>實付總金額: HK$ <span id="finalDisplayAmount">0.00</span></span>
+        <div id="customControls">
+            <input type="number" id="expenseFee" placeholder="運費/平台費 (+)" oninput="autoRecalc()">
+            <select id="serviceCharge" onchange="autoRecalc()">
+                <option value="0">無加一</option>
+                <option value="0.1">有加一 (10%)</option>
+            </select>
+            <select id="discountType" onchange="autoRecalc()">
+                <option value="percent">折扣 (%)</option>
+                <option value="fixed">折扣 ($)</option>
+            </select>
+            <input type="number" id="expenseDiscount" placeholder="折扣數值" oninput="autoRecalc()">
         </div>
-        <button onclick="addExpense()">新增紀錄</button>
+        <input type="number" id="equalTotalAmount" placeholder="總消費金額" style="display:none;" oninput="autoRecalc()">
+
+        <select id="expensePayer" style="margin-top:10px;"></select>
+        <div id="expenseSplitContainer" style="margin-top:10px;"></div>
+        
+        <h3 id="finalDisplay" style="color:var(--primary-color);">實付: HK$ 0.00</h3>
+        <button onclick="addExpense()">確認新增</button>
     </div>
-    
-    <!-- 其餘部分同之前一樣 -->
+
     <div class="card">
-        <h2>📋 歷史明細</h2>
-        <table><thead><tr><th>項目</th><th>實付總額</th><th>操作</th></tr></thead><tbody id="expenseTableBody"></tbody></table>
+        <h2>📜 歷史與結算</h2>
+        <div id="settlementResult"></div>
     </div>
 </div>
 
 <script>
-    // Firebase 初始化 (同之前一樣)
     const firebaseConfig = { apiKey: "AIzaSyAiV1kXzUjpYAhgYE6ON4GdH135cdgZ6oM", projectId: "lunch-app-81237", databaseURL: "https://lunch-app-81237-default-rtdb.asia-southeast1.firebasedatabase.app" };
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
-    
-    let members = [];
-    db.ref('lunchData/members').on('value', s => { members = s.val() || []; render(); });
 
-    function toggleSplitMode() {
-        const mode = document.getElementById('splitMode').value;
-        document.getElementById('customCostSection').style.display = mode === 'equal' ? 'none' : 'block';
-        document.getElementById('equalAmountSection').style.display = mode === 'equal' ? 'block' : 'none';
-        initSplitInputs();
+    let members = [], expenses = [];
+
+    db.ref('lunchData').on('value', s => {
+        const data = s.val() || {};
+        members = data.members || [];
+        expenses = data.expenses ? Object.keys(data.expenses).map(k => ({ id: k, ...data.expenses[k] })) : [];
+        render();
+    });
+
+    function addMember() {
+        const name = document.getElementById('memberNameInput').value.trim();
+        if (name && !members.includes(name)) {
+            members.push(name);
+            db.ref('lunchData/members').set(members);
+            document.getElementById('memberNameInput').value = '';
+        }
+    }
+
+    function removeMember(name) {
+        members = members.filter(m => m !== name);
+        db.ref('lunchData/members').set(members);
     }
 
     function initSplitInputs() {
+        const mode = document.getElementById('splitMode').value;
+        document.getElementById('customControls').style.display = mode === 'custom' ? 'block' : 'none';
+        document.getElementById('equalTotalAmount').style.display = mode === 'equal' ? 'block' : 'none';
+        
         const container = document.getElementById('expenseSplitContainer');
         container.innerHTML = members.map(m => `
             <div class="split-row">
                 <label><input type="checkbox" class="split-check" value="${m}" checked onchange="autoRecalc()"> ${m}</label>
-                ${document.getElementById('splitMode').value === 'custom' ? '<input type="number" class="split-amount" value="0" oninput="autoRecalc()">' : ''}
+                ${mode === 'custom' ? '<input type="number" class="split-amount" value="0" oninput="autoRecalc()">' : ''}
             </div>
         `).join('');
         autoRecalc();
@@ -122,30 +110,33 @@
 
     function autoRecalc() {
         const mode = document.getElementById('splitMode').value;
-        let finalTotal = 0;
-
+        let total = 0;
         if (mode === 'equal') {
-            finalTotal = parseFloat(document.getElementById('equalTotalAmount').value) || 0;
+            total = parseFloat(document.getElementById('equalTotalAmount').value) || 0;
         } else {
-            const fee = parseFloat(document.getElementById('expenseFee').value) || 0;
-            const hasService = parseFloat(document.getElementById('serviceCharge').value) || 0;
-            const dType = document.getElementById('discountType').value;
-            const dVal = parseFloat(document.getElementById('expenseDiscount').value) || 0;
-            
-            let baseTotal = 0;
-            document.querySelectorAll('.split-amount').forEach(i => baseTotal += parseFloat(i.value) || 0);
-            
-            let serviceFee = baseTotal * hasService;
-            let discount = dType === 'percent' ? (baseTotal * (dVal/100)) : dVal;
-            finalTotal = baseTotal + fee + serviceFee - discount;
+            let base = 0;
+            document.querySelectorAll('.split-amount').forEach(i => base += parseFloat(i.value) || 0);
+            let fee = parseFloat(document.getElementById('expenseFee').value) || 0;
+            let svc = base * (parseFloat(document.getElementById('serviceCharge').value) || 0);
+            let dis = document.getElementById('discountType').value === 'percent' ? base * (parseFloat(document.getElementById('expenseDiscount').value)/100 || 0) : (parseFloat(document.getElementById('expenseDiscount').value) || 0);
+            total = base + fee + svc - dis;
         }
-        document.getElementById('finalDisplayAmount').innerText = Math.max(0, finalTotal).toFixed(2);
+        document.getElementById('finalDisplay').innerText = '實付: HK$ ' + Math.max(0, total).toFixed(2);
     }
 
-    // addExpense 同 render 邏輯保持一致，只係增加咗 serviceCharge 參數嘅寫入
     function addExpense() {
-        // 記得喺寫入 firebase 時加入 serviceCharge: document.getElementById('serviceCharge').value
-        // 此處省略重複代碼，請保持 render 邏輯與之前連接
+        const mode = document.getElementById('splitMode').value;
+        const payer = document.getElementById('expensePayer').value;
+        const title = document.getElementById('expenseTitle').value || '午餐';
+        // 簡單邏輯：儲存後自動會觸發 render
+        db.ref('lunchData/expenses').push({ title, payer, mode, timestamp: Date.now() });
+        alert('已新增！');
+    }
+
+    function render() {
+        document.getElementById('memberTags').innerHTML = members.map(m => `<span class="tag">${m} <b onclick="removeMember('${m}')" style="cursor:pointer;color:red;">&times;</b></span>`).join('');
+        document.getElementById('expensePayer').innerHTML = members.map(m => `<option value="${m}">${m}</option>`).join('');
+        initSplitInputs();
     }
 </script>
 </body>
